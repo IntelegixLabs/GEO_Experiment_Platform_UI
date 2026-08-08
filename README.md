@@ -1,4 +1,4 @@
-# GEO Shopping Lab frontend
+# GEO Experiment Platform UI
 
 React + TypeScript participant and researcher client for the FastAPI study API.
 
