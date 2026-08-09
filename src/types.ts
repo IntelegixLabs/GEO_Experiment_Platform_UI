@@ -97,6 +97,8 @@ export interface ConditionMetric {
   mean_evidence_score?: number | null;
   engagement_events: number;
   engagement_per_citation: number | null;
+  purchase_events?: number;
+  purchases_per_citation?: number | null;
 }
 
 export interface DashboardData {
@@ -112,11 +114,26 @@ export interface DashboardData {
   interpretation_note?: string;
 }
 
+export interface ProbeCandidate {
+  rank_position: number;
+  product_id: string;
+  title: string;
+  category: string;
+  condition: Condition;
+  retrieval_score: number;
+  lexical_score: number;
+  semantic_score: number;
+  evidence_score: number;
+  cited: boolean;
+}
+
 export interface ProbeRun {
   probe_run_id: string;
   repetition: number;
   cited_products: string[];
   cited_conditions?: Condition[];
+  answer?: string;
+  candidates?: ProbeCandidate[];
 }
 
 export interface ProbeResponse {
