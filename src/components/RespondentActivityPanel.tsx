@@ -1,417 +1,846 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { api } from "../api/client";
-import type {
-  AnalyticsCategoryEffect,
-  AnalyticsConditionMetric,
-  AnalyticsFunnelStep,
-  AnalyticsReport,
-  AnalyticsSurveyConstruct,
-  AnalyticsTimelinePoint,
-} from "../types";
-import { DemographicsPanel } from "./DemographicsPanel";
-import { conditionLabel, formatNumber, titleCase } from "../utils/formatters";
+import { Modal } from "./Modal";
 
-interface RespondentAnalyticsPanelProps {
-  onRefresh?: () => Promise<void> | void;
+interface RespondentItem {
+  session_id: string;
+  participant_code: string;
+  email?: string;
+  age?: number;
+  country?: string;
+  ai_familiarity?: string;
+  study_cohort?: string;
+  consent: boolean;
+  started_at?: string;
+  completed_at?: string;
+  queries_count: number;
+  interactions_count: number;
+  survey_status: string;
 }
 
-function formatRate(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  const percentage = Math.abs(value) <= 1 ? value * 100 : value;
-  return percentage.toFixed(1) + "%";
+interface ActivityQuery {
+  id: string;
+  query_text: string;
+  category_filter?: string;
+  created_at?: string;
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+interface ActivityInteraction {
+  id: string;
+  event_type: string;
+  product_id?: string;
+  metadata?: Record<string, any>;
+  created_at?: string;
 }
 
-function downloadText(filename: string, mimeType: string, content: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.style.display = "none";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+interface ActivitySurvey {
+  id: string;
+  answers: Record<string, any>;
+  scale_scores: Record<string, any>;
+  completed_at?: string;
 }
 
-function csvCell(value: unknown): string {
-  const text = value === null || value === undefined ? "" : String(value);
-  return /[",\n]/.test(text) ? "\"" + text.replace(/"/g, "\"\"") + "\"" : text;
-}
-
-function csvText(rows: Array<Array<unknown>>): string {
-  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-}
-
-function buildMetricCsv(report: AnalyticsReport): string {
-  const rows: Array<Array<unknown>> = [["section", "metric", "value", "secondary_value"]];
-  Object.entries(report.totals).forEach(([name, value]) => rows.push(["totals", titleCase(name), value, ""]));
-  report.funnel.forEach((item) => rows.push(["funnel", item.stage, item.count, item.rate ?? ""]));
-  (report.conditions || []).forEach((item) => {
-    rows.push(["condition", conditionLabel(item.condition), item.citation_rate ?? "", item.candidate_opportunities]);
-  });
-  (report.survey?.constructs || []).forEach((item) => rows.push(["survey", titleCase(item.construct), item.mean ?? "", item.n]));
-  (report.category_effects || []).forEach((item) => {
-    rows.push(["category", item.category + " · " + conditionLabel(item.condition), item.citation_rate ?? "", item.candidate_opportunities]);
-  });
-  return csvText(rows);
-}
-
-function safeJsonReport(report: AnalyticsReport) {
-  const { respondents: _respondents, ...aggregateReport } = report;
-  return {
-    ...aggregateReport,
-    export_scope: "Aggregated researcher analytics only; respondent-level records deliberately excluded.",
+interface ActivityDetail {
+  session: {
+    session_id: string;
+    participant_code: string;
+    email?: string;
+    age?: number;
+    country?: string;
+    ai_familiarity?: string;
+    study_cohort?: string;
+    consent: boolean;
+    started_at?: string;
+    completed_at?: string;
   };
+  queries: ActivityQuery[];
+  interactions: ActivityInteraction[];
+  surveys: ActivitySurvey[];
 }
 
-function normalizedRate(value: number | null | undefined): number {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, Math.abs(value) <= 1 ? value * 100 : value));
-}
+export function RespondentActivityPanel() {
+  const [respondents, setRespondents] = useState<RespondentItem[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(15);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [cohortFilter, setCohortFilter] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>("");
 
-function funnelRate(step: AnalyticsFunnelStep, firstCount: number): number {
-  if (step.rate !== null && step.rate !== undefined) return normalizedRate(step.rate);
-  return firstCount > 0 ? Math.max(0, Math.min(100, (step.count / firstCount) * 100)) : 0;
-}
+  // Activity modal state
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<ActivityDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [detailError, setDetailError] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"queries" | "interactions" | "surveys">("queries");
 
-function ExperimentFlowVisual({ svgRef }: { svgRef: React.RefObject<SVGSVGElement> }) {
-  return (
-    <div className="analytics-experiment-visual">
-      <div className="analytics-orbit analytics-orbit-one" aria-hidden="true" />
-      <div className="analytics-orbit analytics-orbit-two" aria-hidden="true" />
-      <svg ref={svgRef} viewBox="0 0 840 266" role="img" aria-label="Three-stage experimental flow: GEO product treatment, controlled shopping assistant, and respondent outcomes">
-        <defs>
-          <linearGradient id="analytics-cube-treatment" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#2d9d90" /><stop offset="1" stopColor="#176c72" /></linearGradient>
-          <linearGradient id="analytics-cube-agent" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#f3bd57" /><stop offset="1" stopColor="#d88745" /></linearGradient>
-          <linearGradient id="analytics-cube-outcome" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#7189b5" /><stop offset="1" stopColor="#4e5f91" /></linearGradient>
-          <filter id="analytics-cube-shadow" x="-20%" y="-20%" width="150%" height="170%"><feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#193848" floodOpacity=".2" /></filter>
-          <marker id="analytics-flow-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#7da9a7" /></marker>
-        </defs>
-        <path d="M230 133 C290 133 300 133 347 133" fill="none" stroke="#7da9a7" strokeWidth="3" strokeDasharray="8 8" markerEnd="url(#analytics-flow-arrow)" />
-        <path d="M500 133 C560 133 570 133 617 133" fill="none" stroke="#7da9a7" strokeWidth="3" strokeDasharray="8 8" markerEnd="url(#analytics-flow-arrow)" />
-        <g filter="url(#analytics-cube-shadow)">
-          <polygon points="62,102 142,58 222,102 142,148" fill="#5bc0ae" />
-          <polygon points="62,102 142,148 142,222 62,175" fill="#197477" />
-          <polygon points="142,148 222,102 222,175 142,222" fill="url(#analytics-cube-treatment)" />
-        </g>
-        <text x="142" y="121" fill="#163c4c" fontSize="14" fontWeight="800" textAnchor="middle">Factual GEO</text>
-        <text x="142" y="180" fill="#e7fbf8" fontSize="12" fontWeight="700" textAnchor="middle">Treatment</text>
-        <text x="142" y="198" fill="#d2f0ed" fontSize="10" textAnchor="middle">Structure + evidence</text>
-        <g filter="url(#analytics-cube-shadow)">
-          <polygon points="352,102 432,58 512,102 432,148" fill="#ffd978" />
-          <polygon points="352,102 432,148 432,222 352,175" fill="#d98a47" />
-          <polygon points="432,148 512,102 512,175 432,222" fill="url(#analytics-cube-agent)" />
-        </g>
-        <text x="432" y="121" fill="#513d1f" fontSize="14" fontWeight="800" textAnchor="middle">Shopping AI</text>
-        <text x="432" y="180" fill="#fff8df" fontSize="12" fontWeight="700" textAnchor="middle">Controlled agent</text>
-        <text x="432" y="198" fill="#fff1d2" fontSize="10" textAnchor="middle">Retrieve → cite → explain</text>
-        <g filter="url(#analytics-cube-shadow)">
-          <polygon points="642,102 722,58 802,102 722,148" fill="#aab8dc" />
-          <polygon points="642,102 722,148 722,222 642,175" fill="#51699a" />
-          <polygon points="722,148 802,102 802,175 722,222" fill="url(#analytics-cube-outcome)" />
-        </g>
-        <text x="722" y="121" fill="#26324f" fontSize="14" fontWeight="800" textAnchor="middle">Respondents</text>
-        <text x="722" y="180" fill="#edf1ff" fontSize="12" fontWeight="700" textAnchor="middle">Observed outcomes</text>
-        <text x="722" y="198" fill="#dde6ff" fontSize="10" textAnchor="middle">Use · trust · intention</text>
-        <text x="286" y="100" fill="#63908d" fontSize="10" fontWeight="800" textAnchor="middle">citation pathway</text>
-        <text x="578" y="100" fill="#63908d" fontSize="10" fontWeight="800" textAnchor="middle">consumer pathway</text>
-      </svg>
-      <div className="analytics-visual-legend"><span><i className="treatment" />GEO page variant</span><span><i className="agent" />AI-assisted discovery</span><span><i className="outcome" />Pseudonymous outcomes</span></div>
-    </div>
+  const loadRespondents = useCallback(
+    async (currentPage = page, currentSize = pageSize, query = searchQuery, cohort = cohortFilter) => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await api.getRespondents({
+          page: currentPage,
+          limit: currentSize,
+          query: query.trim() || undefined,
+          cohort: cohort || undefined,
+        });
+        setRespondents(res.items || []);
+        setTotal(res.total || 0);
+        setPage(res.page || currentPage);
+        setTotalPages(res.pages || 1);
+      } catch (err: any) {
+        setError(err?.message || "Failed to load respondents list.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [page, pageSize, searchQuery, cohortFilter]
   );
-}
-
-function RadarChart({ constructs }: { constructs: AnalyticsSurveyConstruct[] }) {
-  const chartId = useId();
-  const values = constructs.slice(0, 6);
-  const size = 250;
-  const center = size / 2;
-  const radius = 79;
-  const scaleMaximum = Math.max(7, ...values.map((item) => item.maximum || item.mean || 0));
-  const pointFor = (index: number, value: number) => {
-    const angle = (Math.PI * 2 * index / Math.max(1, values.length)) - Math.PI / 2;
-    const distance = Math.max(0, Math.min(radius, (value / scaleMaximum) * radius));
-    return { x: center + Math.cos(angle) * distance, y: center + Math.sin(angle) * distance };
-  };
-  const polygon = values.map((item, index) => {
-    const point = pointFor(index, item.mean || 0);
-    return point.x.toFixed(2) + "," + point.y.toFixed(2);
-  }).join(" ");
-  const axisPoints = values.map((_item, index) => {
-    const point = pointFor(index, scaleMaximum);
-    return { ...point, index };
-  });
-  const rings = [0.33, 0.66, 1].map((factor) => values.map((_item, index) => {
-    const point = pointFor(index, scaleMaximum * factor);
-    return point.x.toFixed(2) + "," + point.y.toFixed(2);
-  }).join(" "));
-
-  if (!values.length || !values.some((item) => item.mean !== null && item.mean !== undefined)) {
-    return <div className="analytics-empty-chart">Survey construct means will appear after completed questionnaires are received.</div>;
-  }
-
-  return (
-    <div className="analytics-radar-wrap">
-      <svg viewBox={"0 0 " + size + " " + size} role="img" aria-labelledby={chartId}>
-        <title id={chartId}>Survey construct mean radar chart</title>
-        {rings.map((ring, index) => <polygon className="analytics-radar-ring" points={ring} key={index} />)}
-        {axisPoints.map((point) => <line className="analytics-radar-axis" x1={center} y1={center} x2={point.x} y2={point.y} key={point.index} />)}
-        <polygon className="analytics-radar-area" points={polygon} />
-        {values.map((item, index) => {
-          const point = pointFor(index, item.mean || 0);
-          const labelPoint = pointFor(index, scaleMaximum * 1.2);
-          return (
-            <g key={item.construct}>
-              <circle className="analytics-radar-dot" cx={point.x} cy={point.y} r="3.7" />
-              <text className="analytics-radar-label" x={labelPoint.x} y={labelPoint.y} textAnchor={labelPoint.x < center - 6 ? "end" : labelPoint.x > center + 6 ? "start" : "middle"}>{titleCase(item.construct)}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="analytics-radar-summary">{values.map((item) => <span key={item.construct}><i /><strong>{titleCase(item.construct)}</strong><b>{item.mean === null || item.mean === undefined ? "—" : item.mean.toFixed(2)}</b></span>)}</div>
-    </div>
-  );
-}
-
-function TimelineChart({ points }: { points: AnalyticsTimelinePoint[] }) {
-  const chartId = useId();
-  const values = points.map((point) => Number(point.queries || 0));
-  const maximum = Math.max(1, ...values);
-  const width = 560;
-  const height = 186;
-  const left = 22;
-  const bottom = 28;
-  const innerWidth = width - left - 14;
-  const innerHeight = height - bottom - 16;
-  const coordinates = values.map((value, index) => ({
-    x: left + (innerWidth * index / Math.max(1, values.length - 1)),
-    y: 16 + innerHeight - ((value / maximum) * innerHeight),
-  }));
-  const line = coordinates.map((point, index) => (index ? "L" : "M") + point.x.toFixed(2) + " " + point.y.toFixed(2)).join(" ");
-  const area = line ? line + " L" + coordinates[coordinates.length - 1].x.toFixed(2) + " " + (height - bottom) + " L" + coordinates[0].x.toFixed(2) + " " + (height - bottom) + " Z" : "";
-
-  if (!points.length) return <div className="analytics-empty-chart">A daily query timeline will appear after consented participants search the catalog.</div>;
-
-  return (
-    <div className="analytics-timeline-wrap">
-      <svg viewBox={"0 0 " + width + " " + height} role="img" aria-labelledby={chartId}>
-        <title id={chartId}>Participant query timeline</title>
-        {[.25, .5, .75, 1].map((fraction) => <line className="analytics-timeline-gridline" x1={left} x2={width - 14} y1={16 + innerHeight - (fraction * innerHeight)} y2={16 + innerHeight - (fraction * innerHeight)} key={fraction} />)}
-        <path className="analytics-timeline-area" d={area} />
-        <path className="analytics-timeline-line" d={line} />
-        {coordinates.map((point, index) => <circle className="analytics-timeline-point" cx={point.x} cy={point.y} r="4" key={points[index].date}><title>{points[index].date + ": " + formatNumber(values[index]) + " queries"}</title></circle>)}
-        {points.map((point, index) => {
-          if (points.length > 6 && index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) return null;
-          return <text className="analytics-timeline-label" x={coordinates[index].x} y={height - 9} textAnchor="middle" key={point.date + "-label"}>{point.date.slice(5)}</text>;
-        })}
-      </svg>
-      <div className="analytics-timeline-key"><span><i />Queries</span><span>Peak: <strong>{formatNumber(maximum)}</strong> in one period</span></div>
-    </div>
-  );
-}
-
-export function RespondentAnalyticsPanel({ onRefresh }: RespondentAnalyticsPanelProps) {
-  const headingId = useId();
-  const flowSvgRef = useRef<SVGSVGElement>(null);
-  const [report, setReport] = useState<AnalyticsReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [downloadStatus, setDownloadStatus] = useState("");
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const nextReport = await api.getAnalyticsReport(100);
-      setReport(nextReport);
-      await onRefresh?.();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Respondent analytics could not be loaded.");
-    } finally {
-      setLoading(false);
-    }
-  }, [onRefresh]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    loadRespondents(1, pageSize, searchQuery, cohortFilter);
+  }, [pageSize, cohortFilter]);
 
-  const conditions = report?.conditions || [];
-  const constructs = report?.survey?.constructs || [];
-  const categoryEffects = report?.category_effects || [];
-  const respondents = report?.respondents?.items || [];
-  const funnel = report?.funnel || [];
-  const firstFunnelCount = funnel[0]?.count || 0;
-
-  const overviewMetrics = useMemo(() => {
-    if (!report) return [];
-    const totals = report.totals;
-    return [
-      { label: "Consented respondents", value: totals.consented_sessions ?? report.respondents?.total ?? 0, detail: "eligible study records" },
-      { label: "Shopping searches", value: totals.queries ?? 0, detail: "natural-language queries" },
-      { label: "Completed surveys", value: totals.completed_surveys ?? 0, detail: "post-task responses" },
-      { label: "Survey completion", value: formatRate(totals.survey_completion_rate), detail: "of consented respondents", isText: true },
-    ];
-  }, [report]);
-  const visibleOverviewMetrics = loading && !report
-    ? Array.from({ length: 4 }, (_value, index) => ({
-      label: "loading-" + index,
-      value: 0,
-      detail: "",
-      isText: false,
-      loading: true,
-    }))
-    : overviewMetrics.map((metric) => ({ ...metric, loading: false }));
-
-  const citationMaximum = Math.max(1, ...conditions.map((item) => normalizedRate(item.citation_rate)));
-  const categoryRows = useMemo(() => {
-    const grouped = new Map<string, AnalyticsCategoryEffect[]>();
-    categoryEffects.forEach((item) => grouped.set(item.category, [...(grouped.get(item.category) || []), item]));
-    return [...grouped.entries()].slice(0, 8);
-  }, [categoryEffects]);
-
-  function announceDownload(message: string) {
-    setDownloadStatus(message);
-    window.setTimeout(() => setDownloadStatus(""), 3500);
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPage(1);
+    loadRespondents(1, pageSize, searchQuery, cohortFilter);
   }
 
-  function exportCsv() {
-    if (!report) return;
-    downloadText("geo-respondent-analytics-metrics.csv", "text/csv;charset=utf-8", csvText([["Generated at", report.generated_at || ""], []]) + "\r\n" + buildMetricCsv(report));
-    announceDownload("Aggregated metrics CSV downloaded. Respondent-level rows are excluded.");
+  async function openActivityModal(sessionId: string) {
+    setSelectedSessionId(sessionId);
+    setDetailData(null);
+    setDetailLoading(true);
+    setDetailError("");
+    setActiveTab("queries");
+    try {
+      const data = await api.getRespondentActivity(sessionId);
+      setDetailData(data);
+    } catch (err: any) {
+      setDetailError(err?.message || "Failed to load respondent activity logs.");
+    } finally {
+      setDetailLoading(false);
+    }
   }
 
-  function exportJson() {
-    if (!report) return;
-    downloadText("geo-respondent-analytics-aggregate.json", "application/json;charset=utf-8", JSON.stringify(safeJsonReport(report), null, 2));
-    announceDownload("Aggregated analytics JSON downloaded. Pseudonymous respondent records are excluded.");
-  }
-
-  function exportSvg() {
-    const svg = flowSvgRef.current;
-    if (!svg) return;
-    const source = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + svg.outerHTML.replace("<svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"");
-    downloadText("geo-experiment-flow.svg", "image/svg+xml;charset=utf-8", source);
-    announceDownload("Experiment-flow SVG downloaded.");
+  function formatTimestamp(iso?: string) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
   }
 
   return (
-    <section className="panel respondent-analytics-panel" aria-labelledby={headingId}>
-      <header className="analytics-heading">
+    <section className="research-panel">
+      <div
+        className="panel-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "16px",
+          borderBottom: "1px solid #c6dada",
+          paddingBottom: "16px",
+          marginBottom: "20px",
+        }}
+      >
         <div>
-          <p className="eyebrow">Researcher-only analytics</p>
-          <h2 id={headingId}>Respondent outcomes and experiment signal</h2>
-          <p>Aggregate the visibility pathway, participant interaction, and survey outcomes without exposing raw search text or direct identifiers.</p>
+          <p className="eyebrow" style={{ color: "#547980", fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
+            RESEARCHER CONSOLE • RESPONDENT LOGS
+          </p>
+          <h2 style={{ color: "#163b43", fontSize: "1.5rem", fontWeight: 700, margin: "4px 0 0 0" }}>
+            Respondent activity & profiles
+          </h2>
+          <p style={{ color: "#547980", fontSize: "0.9rem", margin: "4px 0 0 0" }}>
+            Detailed view of all study participants, email addresses, demographics, queries, interactions, and survey responses.
+          </p>
         </div>
-        <div className="analytics-heading-actions">
-          <span className={loading ? "analytics-live-badge loading" : "analytics-live-badge"}><i />{loading ? "Refreshing" : "Live report"}</span>
-          <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh analytics"}</button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid #c6dada",
+              borderRadius: "8px",
+              padding: "8px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <span style={{ fontSize: "0.8rem", color: "#547980", fontWeight: 600 }}>Total Consented:</span>
+            <span style={{ fontSize: "1.1rem", color: "#163b43", fontWeight: 700 }}>{total}</span>
+          </div>
+          <button
+            onClick={() => loadRespondents(page, pageSize, searchQuery, cohortFilter)}
+            style={{
+              background: "#ffffff",
+              border: "1px solid #c6dada",
+              color: "#163b43",
+              padding: "8px 14px",
+              borderRadius: "6px",
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            Refresh
+          </button>
         </div>
-      </header>
+      </div>
 
-      {report?.privacy && <div className="analytics-privacy-note"><span aria-hidden="true">◌</span><p><strong>Privacy boundary.</strong> This report includes consented sessions only and excludes raw queries, raw survey answers, participant codes, countries, and event metadata.</p></div>}
-      {error && <p className="form-error" role="alert">{error}</p>}
-
-      <div className="analytics-export-row">
-        <div><strong>Analysis exports</strong><small>Downloads contain aggregated metrics only; respondent-level records stay inside this protected console.</small></div>
-        <div className="analytics-export-actions">
-          <button className="secondary-button" type="button" onClick={exportCsv} disabled={!report}>Metrics CSV</button>
-          <button className="secondary-button" type="button" onClick={exportJson} disabled={!report}>Aggregate JSON</button>
-          <button className="secondary-button" type="button" onClick={exportSvg}>Experiment SVG</button>
+      {/* Filter and Search controls */}
+      <form
+        onSubmit={handleSearchSubmit}
+        style={{
+          display: "flex",
+          gap: "12px",
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: "20px",
+          background: "#ffffff",
+          padding: "16px",
+          borderRadius: "8px",
+          border: "1px solid #c6dada",
+        }}
+      >
+        <div style={{ flex: "1 1 240px", display: "flex", gap: "8px" }}>
+          <input
+            type="text"
+            placeholder="Search by participant name, session ID, email, location..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid #c6dada",
+              fontSize: "0.9rem",
+              color: "#163b43",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              background: "#126166",
+              color: "#ffffff",
+              border: "none",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+            }}
+          >
+            Filter
+          </button>
         </div>
-      </div>
-      {downloadStatus && <p className="analytics-download-status" aria-live="polite">{downloadStatus}</p>}
 
-      <div className="analytics-metric-grid" aria-live="polite">
-        {visibleOverviewMetrics.map((metric) => (
-          <article className={"analytics-metric-card" + (metric.loading ? " loading" : "")} key={metric.label}>
-            <><span>{metric.loading ? "" : metric.label}</span><strong>{metric.loading ? "" : metric.isText ? metric.value : formatNumber(metric.value as number)}</strong><small>{metric.loading ? "" : metric.detail}</small></>
-          </article>
-        ))}
-      </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <label style={{ fontSize: "0.85rem", color: "#547980", fontWeight: 600 }}>Cohort:</label>
+          <select
+            value={cohortFilter}
+            onChange={(e) => setCohortFilter(e.target.value)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid #c6dada",
+              fontSize: "0.85rem",
+              color: "#163b43",
+              background: "#ffffff",
+            }}
+          >
+            <option value="">All Cohorts</option>
+            <option value="main">main</option>
+            <option value="auto-recovered">auto-recovered</option>
+            <option value="pilot">pilot</option>
+          </select>
+        </div>
 
-      <div className="analytics-overview-grid">
-        <section className="analytics-visual-panel" aria-labelledby="analytics-flow-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Causal path</p><h3 id="analytics-flow-heading">Experiment in motion</h3></div><span>Controlled, factual, observable</span></div>
-          <ExperimentFlowVisual svgRef={flowSvgRef} />
-        </section>
-        <section className="analytics-funnel-panel" aria-labelledby="analytics-funnel-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Response journey</p><h3 id="analytics-funnel-heading">Participant funnel</h3></div></div>
-          {funnel.length ? <ol className="analytics-funnel-list">{funnel.map((step, index) => {
-            const rate = funnelRate(step, firstFunnelCount);
-            return <li key={step.stage}><div><span className="analytics-funnel-step">{String(index + 1).padStart(2, "0")}</span><strong>{titleCase(step.stage)}</strong><small>{formatNumber(step.count)} respondents · {formatRate(step.rate ?? (firstFunnelCount ? step.count / firstFunnelCount : null))}</small></div><span className="analytics-funnel-track"><i style={{ width: rate + "%" }} /></span></li>;
-          })}</ol> : <div className="analytics-empty-chart">The consent-to-survey pathway will populate as research sessions are recorded.</div>}
-        </section>
-      </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+          <label style={{ fontSize: "0.85rem", color: "#547980", fontWeight: 600 }}>Show:</label>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            style={{
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid #c6dada",
+              fontSize: "0.85rem",
+              color: "#163b43",
+              background: "#ffffff",
+            }}
+          >
+            <option value={10}>10 per page</option>
+            <option value={15}>15 per page</option>
+            <option value={25}>25 per page</option>
+            <option value={50}>50 per page</option>
+          </select>
+        </div>
+      </form>
 
-      <div className="analytics-chart-grid">
-        <section className="analytics-chart-panel" aria-labelledby="analytics-condition-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Visibility effect</p><h3 id="analytics-condition-heading">Citation and engagement by condition</h3></div><span>Candidate-level denominator</span></div>
-          {conditions.length ? <div className="analytics-condition-bars">{conditions.map((condition) => {
-            const citationRate = normalizedRate(condition.citation_rate);
-            const relativeWidth = citationMaximum ? (citationRate / citationMaximum) * 100 : 0;
-            return <article key={condition.condition}>
-              <div className="analytics-condition-topline"><span className={"condition-chip " + (condition.condition === "GEO_OPTIMIZED" ? "treatment" : "control")}>{conditionLabel(condition.condition)}</span><strong>{formatRate(condition.citation_rate)}</strong></div>
-              <div className="analytics-condition-bar"><i className={condition.condition === "GEO_OPTIMIZED" ? "treatment" : "control"} style={{ width: relativeWidth + "%" }} /></div>
-              <dl><div><dt>Citations</dt><dd>{formatNumber(condition.citation_events)} / {formatNumber(condition.candidate_opportunities)}</dd></div><div><dt>Top 3</dt><dd>{formatRate(condition.top3_rate)}</dd></div><div><dt>Engagement</dt><dd>{formatNumber(condition.engagement_events)}</dd></div></dl>
-            </article>;
-          })}</div> : <div className="analytics-empty-chart">Citation, top-three, and reference-engagement outcomes will appear after participant searches.</div>}
-        </section>
-        <section className="analytics-chart-panel" aria-labelledby="analytics-survey-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Consumer response</p><h3 id="analytics-survey-heading">Construct profile</h3></div><span>Mean on the study scale</span></div>
-          <RadarChart constructs={constructs} />
-        </section>
-      </div>
+      {/* Error display */}
+      {error && (
+        <div
+          style={{
+            background: "#fdf2f2",
+            border: "1px solid #f87171",
+            color: "#991b1b",
+            padding: "12px 16px",
+            borderRadius: "6px",
+            marginBottom: "16px",
+            fontSize: "0.9rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-      <div className="analytics-chart-grid analytics-lower-chart-grid">
-        <section className="analytics-chart-panel" aria-labelledby="analytics-timeline-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Activity over time</p><h3 id="analytics-timeline-heading">Search activity timeline</h3></div><span>Consent-filtered</span></div>
-          <TimelineChart points={report?.timeline || []} />
-        </section>
-        <section className="analytics-chart-panel" aria-labelledby="analytics-category-heading">
-          <div className="analytics-panel-heading"><div><p className="eyebrow">Heterogeneity check</p><h3 id="analytics-category-heading">Category signal</h3></div><span>First 8 observed categories</span></div>
-          {categoryRows.length ? <div className="analytics-category-list">{categoryRows.map(([category, rows]) => {
-            const treatment = rows.find((item) => item.condition === "GEO_OPTIMIZED");
-            const control = rows.find((item) => item.condition === "CONTROL");
-            return <div key={category}><strong>{category}</strong><span><i className="control" style={{ width: normalizedRate(control?.citation_rate) + "%" }} /><b>{formatRate(control?.citation_rate)}</b></span><span><i className="treatment" style={{ width: normalizedRate(treatment?.citation_rate) + "%" }} /><b>{formatRate(treatment?.citation_rate)}</b></span></div>;
-          })}</div> : <div className="analytics-empty-chart">Category-level outcomes appear when candidate opportunities have been logged.</div>}
-        </section>
-      </div>
-      
-      <DemographicsPanel />
+      {/* Loading view */}
+      {loading ? (
+        <div style={{ padding: "48px 0", textAlign: "center", color: "#547980", fontWeight: 600 }}>
+          Loading respondent activity records...
+        </div>
+      ) : respondents.length === 0 ? (
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1px dashed #c6dada",
+            borderRadius: "8px",
+            padding: "48px 24px",
+            textAlign: "center",
+            color: "#547980",
+          }}
+        >
+          <p style={{ fontWeight: 600, fontSize: "1rem", margin: "0 0 8px 0" }}>No matching respondents found</p>
+          <p style={{ fontSize: "0.85rem", margin: 0 }}>
+            Try broadening your filter criteria or checking another cohort.
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1px solid #c6dada",
+            borderRadius: "8px",
+            overflow: "hidden",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+          }}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                textAlign: "left",
+                fontSize: "0.88rem",
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    background: "#f4f7f7",
+                    borderBottom: "2px solid #c6dada",
+                    color: "#163b43",
+                    fontWeight: 700,
+                  }}
+                >
+                  <th style={{ padding: "12px 16px" }}>Participant / ID</th>
+                  <th style={{ padding: "12px 16px" }}>Email & Age</th>
+                  <th style={{ padding: "12px 16px" }}>Location</th>
+                  <th style={{ padding: "12px 16px" }}>AI Familiarity</th>
+                  <th style={{ padding: "12px 16px" }}>Cohort</th>
+                  <th style={{ padding: "12px 16px" }}>Started At</th>
+                  <th style={{ padding: "12px 16px", textAlign: "center" }}>Activity</th>
+                  <th style={{ padding: "12px 16px" }}>Survey</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {respondents.map((resp, idx) => (
+                  <tr
+                    key={resp.session_id}
+                    style={{
+                      borderBottom: idx === respondents.length - 1 ? "none" : "1px solid #e2ecec",
+                      background: idx % 2 === 0 ? "#ffffff" : "#fafcfc",
+                    }}
+                  >
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ fontWeight: 700, color: "#163b43" }}>{resp.participant_code || "Anonymous"}</div>
+                      <div style={{ fontSize: "0.75rem", color: "#547980", fontFamily: "monospace", marginTop: "2px" }}>
+                        {resp.session_id}
+                      </div>
+                    </td>
 
-      <section className="analytics-respondent-panel" aria-labelledby="analytics-respondent-heading">
-        <div className="analytics-panel-heading"><div><p className="eyebrow">Pseudonymous response register</p><h3 id="analytics-respondent-heading">Respondent activity snapshot</h3></div><span>{formatNumber(report?.respondents?.total)} consented records</span></div>
-        <p className="analytics-register-note">This view deliberately uses a generated respondent identifier. It excludes participant codes, search text, survey answers, country, and event metadata.</p>
-        <div className="table-wrap"><table><thead><tr><th>Respondent ID</th><th>Cohort</th><th>Started</th><th>Queries</th><th>Interactions</th><th>Construct scores</th><th>Survey</th></tr></thead><tbody>
-          {respondents.length ? respondents.slice(0, 10).map((respondent) => {
-            const scoreEntries = Object.entries(respondent.survey_scores || {})
-              .filter(([, score]) => score !== null && score !== undefined)
-              .slice(0, 3);
-            return (
-              <tr key={respondent.respondent_id}>
-                <td><code>{respondent.respondent_id}</code></td>
-                <td>{respondent.study_cohort || "—"}</td>
-                <td>{formatDate(respondent.started_at)}</td>
-                <td>{formatNumber(respondent.query_count)}</td>
-                <td>{formatNumber(respondent.event_count)}</td>
-                <td>{scoreEntries.length ? <div className="analytics-score-badges">{scoreEntries.map(([construct, score]) => <span key={construct}>{titleCase(construct)} <b>{Number(score).toFixed(1)}</b></span>)}{Object.keys(respondent.survey_scores || {}).length > scoreEntries.length && <em>+ more</em>}</div> : "—"}</td>
-                <td><span className={"analytics-survey-chip " + (respondent.survey_completed ? "complete" : "")}>{respondent.survey_completed ? "Complete" : "Pending"}</span></td>
-              </tr>
-            );
-          }) : <tr><td colSpan={7} className="empty-cell">{loading ? "Loading protected response register…" : "No consented respondents have been recorded yet."}</td></tr>}
-        </tbody></table></div>
-        {report?.respondents?.has_more && <p className="footnote">Showing the first {formatNumber(respondents.length)} protected records from {formatNumber(report.respondents.total)}. Use approved database exports only when your protocol permits respondent-level analysis.</p>}
-      </section>
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ color: "#163b43", fontWeight: 500 }}>{resp.email || "—"}</div>
+                      {resp.age && (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            fontSize: "0.75rem",
+                            background: "#e2ecec",
+                            color: "#163b43",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            marginTop: "4px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Age: {resp.age}
+                        </span>
+                      )}
+                    </td>
 
-      {report?.notes?.length ? <details className="analytics-method-notes"><summary>Report notes and safeguards</summary><ul>{report.notes.map((note) => <li key={note}>{note}</li>)}</ul></details> : null}
+                    <td style={{ padding: "14px 16px", color: "#163b43" }}>{resp.country || "—"}</td>
+
+                    <td style={{ padding: "14px 16px" }}>
+                      <span
+                        style={{
+                          fontSize: "0.8rem",
+                          background: "#f0f5f5",
+                          color: "#163b43",
+                          padding: "3px 8px",
+                          borderRadius: "4px",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {resp.ai_familiarity || "—"}
+                      </span>
+                    </td>
+
+                    <td style={{ padding: "14px 16px" }}>
+                      <span
+                        style={{
+                          fontSize: "0.8rem",
+                          background: "#eef2ff",
+                          color: "#3730a3",
+                          padding: "3px 8px",
+                          borderRadius: "4px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {resp.study_cohort || "main"}
+                      </span>
+                    </td>
+
+                    <td style={{ padding: "14px 16px", color: "#547980", whiteSpace: "nowrap" }}>
+                      {formatTimestamp(resp.started_at)}
+                    </td>
+
+                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                        <span
+                          title="Search queries"
+                          style={{
+                            background: "#e0f2fe",
+                            color: "#0369a1",
+                            padding: "3px 8px",
+                            borderRadius: "12px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {resp.queries_count} Qs
+                        </span>
+                        <span
+                          title="Product interactions & citations"
+                          style={{
+                            background: "#f3e8ff",
+                            color: "#6b21a8",
+                            padding: "3px 8px",
+                            borderRadius: "12px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {resp.interactions_count} Ints
+                        </span>
+                      </div>
+                    </td>
+
+                    <td style={{ padding: "14px 16px" }}>
+                      <span
+                        style={{
+                          fontSize: "0.78rem",
+                          padding: "3px 8px",
+                          borderRadius: "12px",
+                          fontWeight: 700,
+                          background: resp.survey_status === "Completed" ? "#dcfce7" : "#fef3c7",
+                          color: resp.survey_status === "Completed" ? "#15803d" : "#b45309",
+                        }}
+                      >
+                        {resp.survey_status}
+                      </span>
+                    </td>
+
+                    <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                      <button
+                        onClick={() => openActivityModal(resp.session_id)}
+                        style={{
+                          background: "#126166",
+                          color: "#ffffff",
+                          border: "none",
+                          padding: "6px 12px",
+                          borderRadius: "6px",
+                          fontWeight: 600,
+                          fontSize: "0.8rem",
+                          cursor: "pointer",
+                          transition: "background 0.15s",
+                        }}
+                      >
+                        View Activity
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination bar */}
+          <div
+            style={{
+              padding: "12px 18px",
+              background: "#f4f7f7",
+              borderTop: "1px solid #c6dada",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontSize: "0.85rem", color: "#547980" }}>
+              Showing page <strong style={{ color: "#163b43" }}>{page}</strong> of{" "}
+              <strong style={{ color: "#163b43" }}>{totalPages}</strong> ({total} total respondents)
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+                style={{
+                  background: page <= 1 ? "#e2ecec" : "#ffffff",
+                  color: page <= 1 ? "#94a3b8" : "#163b43",
+                  border: "1px solid #c6dada",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                  cursor: page <= 1 ? "not-allowed" : "pointer",
+                }}
+              >
+                Previous
+              </button>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(page + 1)}
+                style={{
+                  background: page >= totalPages ? "#e2ecec" : "#ffffff",
+                  color: page >= totalPages ? "#94a3b8" : "#163b43",
+                  border: "1px solid #c6dada",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                  cursor: page >= totalPages ? "not-allowed" : "pointer",
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Details Modal */}
+      <Modal
+        open={!!selectedSessionId}
+        onClose={() => setSelectedSessionId(null)}
+        titleId="respondent-activity-title"
+      >
+        <button
+          className="close-button"
+          type="button"
+          onClick={() => setSelectedSessionId(null)}
+          aria-label="Close activity modal"
+        >
+          ×
+        </button>
+        <p className="eyebrow" style={{ color: "#547980", fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase" }}>
+          RESPONDENT ACTIVITY PROFILE
+        </p>
+        <h2 id="respondent-activity-title" style={{ color: "#163b43", margin: "4px 0 16px 0", fontSize: "1.4rem" }}>
+          {detailData?.session?.participant_code || "Participant Details"}
+        </h2>
+
+        {detailLoading ? (
+          <div style={{ padding: "40px 0", textAlign: "center", color: "#547980", fontWeight: 600 }}>
+            Loading respondent activity logs...
+          </div>
+        ) : detailError ? (
+          <div style={{ color: "#991b1b", background: "#fdf2f2", padding: "12px", borderRadius: "6px" }}>
+            {detailError}
+          </div>
+        ) : detailData ? (
+          <div>
+            {/* Profile snapshot card */}
+            <div
+              style={{
+                background: "#f4f7f7",
+                border: "1px solid #c6dada",
+                borderRadius: "8px",
+                padding: "16px",
+                marginBottom: "20px",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "12px",
+                fontSize: "0.85rem",
+              }}
+            >
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Session ID</span>
+                <strong style={{ color: "#163b43", fontFamily: "monospace" }}>{detailData.session.session_id}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Email Address</span>
+                <strong style={{ color: "#163b43" }}>{detailData.session.email || "—"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Age</span>
+                <strong style={{ color: "#163b43" }}>{detailData.session.age || "—"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Location</span>
+                <strong style={{ color: "#163b43" }}>{detailData.session.country || "—"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>AI Familiarity</span>
+                <strong style={{ color: "#163b43" }}>{detailData.session.ai_familiarity || "—"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Cohort</span>
+                <strong style={{ color: "#163b43" }}>{detailData.session.study_cohort || "main"}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Started At</span>
+                <strong style={{ color: "#163b43" }}>{formatTimestamp(detailData.session.started_at)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "#547980", display: "block", fontSize: "0.75rem" }}>Completed At</span>
+                <strong style={{ color: "#163b43" }}>{formatTimestamp(detailData.session.completed_at)}</strong>
+              </div>
+            </div>
+
+            {/* Tabs selector */}
+            <div
+              style={{
+                display: "flex",
+                borderBottom: "2px solid #c6dada",
+                gap: "24px",
+                marginBottom: "16px",
+              }}
+            >
+              <button
+                onClick={() => setActiveTab("queries")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === "queries" ? "3px solid #126166" : "3px solid transparent",
+                  padding: "8px 4px",
+                  fontWeight: 700,
+                  color: activeTab === "queries" ? "#126166" : "#547980",
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                }}
+              >
+                Search Queries ({detailData.queries.length})
+              </button>
+              <button
+                onClick={() => setActiveTab("interactions")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === "interactions" ? "3px solid #126166" : "3px solid transparent",
+                  padding: "8px 4px",
+                  fontWeight: 700,
+                  color: activeTab === "interactions" ? "#126166" : "#547980",
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                }}
+              >
+                Product Interactions ({detailData.interactions.length})
+              </button>
+              <button
+                onClick={() => setActiveTab("surveys")}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === "surveys" ? "3px solid #126166" : "3px solid transparent",
+                  padding: "8px 4px",
+                  fontWeight: 700,
+                  color: activeTab === "surveys" ? "#126166" : "#547980",
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                }}
+              >
+                Survey Responses ({detailData.surveys.length})
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+              {activeTab === "queries" && (
+                <div>
+                  {detailData.queries.length === 0 ? (
+                    <p style={{ color: "#547980", fontStyle: "italic" }}>No search queries recorded for this respondent.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                      <thead>
+                        <tr style={{ background: "#f4f7f7", borderBottom: "1px solid #c6dada" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Time</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Search Query Text</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Category Filter</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailData.queries.map((q) => (
+                          <tr key={q.id} style={{ borderBottom: "1px solid #e2ecec" }}>
+                            <td style={{ padding: "8px 10px", color: "#547980", whiteSpace: "nowrap" }}>
+                              {formatTimestamp(q.created_at)}
+                            </td>
+                            <td style={{ padding: "8px 10px", fontWeight: 600, color: "#163b43" }}>{q.query_text}</td>
+                            <td style={{ padding: "8px 10px", color: "#547980" }}>{q.category_filter || "All Categories"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "interactions" && (
+                <div>
+                  {detailData.interactions.length === 0 ? (
+                    <p style={{ color: "#547980", fontStyle: "italic" }}>No product interactions recorded.</p>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                      <thead>
+                        <tr style={{ background: "#f4f7f7", borderBottom: "1px solid #c6dada" }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Time</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Event Type</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Product ID</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left" }}>Metadata</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailData.interactions.map((intx) => (
+                          <tr key={intx.id} style={{ borderBottom: "1px solid #e2ecec" }}>
+                            <td style={{ padding: "8px 10px", color: "#547980", whiteSpace: "nowrap" }}>
+                              {formatTimestamp(intx.created_at)}
+                            </td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <span
+                                style={{
+                                  background: "#f0fdf4",
+                                  color: "#166534",
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {intx.event_type}
+                              </span>
+                            </td>
+                            <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#163b43" }}>
+                              {intx.product_id || "—"}
+                            </td>
+                            <td style={{ padding: "8px 10px", color: "#547980", fontSize: "0.78rem" }}>
+                              {intx.metadata && Object.keys(intx.metadata).length > 0
+                                ? JSON.stringify(intx.metadata)
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "surveys" && (
+                <div>
+                  {detailData.surveys.length === 0 ? (
+                    <p style={{ color: "#547980", fontStyle: "italic" }}>No survey completed by this respondent.</p>
+                  ) : (
+                    detailData.surveys.map((sv) => (
+                      <div
+                        key={sv.id}
+                        style={{
+                          background: "#f9fbfb",
+                          border: "1px solid #c6dada",
+                          borderRadius: "6px",
+                          padding: "16px",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: "#163b43", marginBottom: "8px" }}>
+                          Completed on: {formatTimestamp(sv.completed_at)}
+                        </div>
+                        <h4 style={{ margin: "12px 0 6px 0", color: "#163b43", fontSize: "0.9rem" }}>Answers:</h4>
+                        <pre
+                          style={{
+                            background: "#ffffff",
+                            padding: "10px",
+                            borderRadius: "4px",
+                            border: "1px solid #e2ecec",
+                            fontSize: "0.8rem",
+                            overflowX: "auto",
+                          }}
+                        >
+                          {JSON.stringify(sv.answers, null, 2)}
+                        </pre>
+                        {sv.scale_scores && (
+                          <>
+                            <h4 style={{ margin: "12px 0 6px 0", color: "#163b43", fontSize: "0.9rem" }}>Scale Scores:</h4>
+                            <pre
+                              style={{
+                                background: "#ffffff",
+                                padding: "10px",
+                                borderRadius: "4px",
+                                border: "1px solid #e2ecec",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {JSON.stringify(sv.scale_scores, null, 2)}
+                            </pre>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </section>
   );
 }
