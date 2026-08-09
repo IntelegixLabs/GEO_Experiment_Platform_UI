@@ -187,6 +187,7 @@ export const api = {
     if (params.category_filter) q.set("category_filter", params.category_filter);
     return request<any>(`/admin/vectordb/products?${q.toString()}`);
   },
+  clearVectorDb: () => request<{ status: string; message: string }>("/admin/vector-db/clear", { method: "DELETE" }),
   getRespondents: (params: { page: number; limit: number; query?: string; cohort?: string }) => {
     const q = new URLSearchParams();
     q.set("page", String(params.page));
