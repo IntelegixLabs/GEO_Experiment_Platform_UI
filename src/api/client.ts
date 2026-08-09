@@ -188,6 +188,7 @@ export const api = {
     return request<any>(`/admin/vectordb/products?${q.toString()}`);
   },
   clearVectorDb: () => request<{ status: string; message: string }>("/admin/vector-db/clear", { method: "DELETE" }),
+  getDemographics: () => request<{ demographics: { country: string; count: number }[] }>("/admin/respondents/demographics"),
   getRespondents: (params: { page: number; limit: number; query?: string; cohort?: string }) => {
     const q = new URLSearchParams();
     q.set("page", String(params.page));
