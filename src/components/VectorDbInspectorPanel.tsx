@@ -40,6 +40,7 @@ export function VectorDbInspectorPanel({ categories }: VectorDbInspectorPanelPro
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState<boolean>(false);
 
   const loadData = useCallback(async (targetPage: number, targetPageSize: number, query: string, cat: string) => {
     setLoading(true);
@@ -85,6 +86,22 @@ export function VectorDbInspectorPanel({ categories }: VectorDbInspectorPanelPro
     }
   };
 
+  const handleClearDb = async () => {
+    if (!window.confirm("Are you sure you want to clear the entire vector database? All semantic search capabilities will be disabled until you re-index products via an optimization run.")) {
+      return;
+    }
+    setClearing(true);
+    setError("");
+    try {
+      await api.clearVectorDb();
+      loadData(1, pageSize, "", "");
+    } catch (err: any) {
+      setError(err.message || "Failed to clear Vector DB.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <div className="panel" style={{ padding: "24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
@@ -93,21 +110,32 @@ export function VectorDbInspectorPanel({ categories }: VectorDbInspectorPanelPro
             Vector Store Inspector
           </p>
           <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 800, color: "#163b43" }}>
-            ChromaDB Vector DB Inspector
+            CockroachDB Vector Store Inspector
           </h2>
           <p style={{ margin: "6px 0 0", color: "#5e757a", fontSize: "0.9rem" }}>
             Inspect embedded product vectors, factual GEO treatment bundles, and run semantic similarity searches against the active vector database.
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => loadData(page, pageSize, searchQuery, selectedCategory)}
-          disabled={loading}
-          style={{ display: "flex", alignItems: "center", gap: "8px" }}
-        >
-          {loading ? "Refreshing…" : "Refresh Vector DB"}
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={handleClearDb}
+            disabled={loading || clearing}
+            style={{ display: "flex", alignItems: "center", gap: "8px", color: "#b91c1c", borderColor: "#fca5a5", background: "#fee2e2" }}
+          >
+            {clearing ? "Clearing…" : "Clear Vector DB"}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => loadData(page, pageSize, searchQuery, selectedCategory)}
+            disabled={loading || clearing}
+            style={{ display: "flex", alignItems: "center", gap: "8px" }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -122,7 +150,7 @@ export function VectorDbInspectorPanel({ categories }: VectorDbInspectorPanelPro
           <span>Total Indexed Vectors</span>
           <strong>{statusData ? formatNumber(statusData.count) : "—"}</strong>
           <small style={{ color: "#126166", display: "block", marginTop: "4px" }}>
-            ChromaDB Collection: <strong>{statusData?.collection_name || "products"}</strong>
+            CockroachDB Table: <strong>{statusData?.collection_name || "product_vectors"}</strong>
           </small>
         </article>
 
@@ -140,10 +168,10 @@ export function VectorDbInspectorPanel({ categories }: VectorDbInspectorPanelPro
         <article className="metric-card">
           <span>Embedding Function</span>
           <strong style={{ fontSize: "1.05rem" }}>
-            {statusData?.embedding_function || "DefaultEmbeddingFunction"}
+            {statusData?.embedding_function || "OpenAI"}
           </strong>
           <small style={{ color: "#5e757a", display: "block", marginTop: "4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Path: <code>{statusData?.path || "chroma_db"}</code>
+            Path: <code>{statusData?.path || "cockroachdb"}</code>
           </small>
         </article>
       </div>
