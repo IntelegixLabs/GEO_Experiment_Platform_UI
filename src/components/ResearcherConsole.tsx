@@ -273,24 +273,133 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
 
             <div className="research-grid">
               <section className="panel">
-                <div className="panel-heading"><div><p className="eyebrow">Primary GEO outcomes</p><h2>Citation and engagement by condition</h2></div></div>
-                <div className="table-wrap">
-                  <table>
-                    <thead><tr><th>Condition</th><th>Citations</th><th>Opportunity rate</th><th>Mean score</th><th>Reference engagement</th></tr></thead>
-                    <tbody>
-                      {dashboard?.by_condition.length ? dashboard.by_condition.map((row) => (
-                        <tr key={row.condition}>
-                          <td><ConditionChip value={row.condition} /></td>
-                          <td>{formatNumber(row.citation_events)} / {formatNumber(row.candidate_opportunities)}</td>
-                          <td>{formatPercent(row.citation_rate)}</td>
-                          <td>{formatNumber(row.mean_retrieval_score, 2)}</td>
-                          <td>{formatNumber(row.engagement_events)} ({formatNumber(row.engagement_per_citation, 2)} / citation)</td>
-                        </tr>
-                      )) : <tr><td colSpan={5} className="empty-cell">{loading ? "Loading data…" : "No participant search data yet."}</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="footnote">{dashboard?.interpretation_note}</p>
+                <div className="panel-heading"><div><p className="eyebrow">Primary GEO outcomes</p><h2>Performance by Condition</h2></div></div>
+                {dashboard?.by_condition.length ? (() => {
+                  const geoRow = dashboard.by_condition.find(r => r.condition === "GEO_OPTIMIZED");
+                  const controlRow = dashboard.by_condition.find(r => r.condition === "CONTROL");
+                  
+                  if (!geoRow || !controlRow) {
+                    return <div className="empty-cell" style={{ padding: "2rem" }}>Insufficient data to compare GEO vs Control.</div>;
+                  }
+
+                  const totalCitations = geoRow.citation_events + controlRow.citation_events;
+                  const geoPct = totalCitations ? Math.round((geoRow.citation_events / totalCitations) * 100) : 0;
+                  const controlPct = totalCitations ? Math.round((controlRow.citation_events / totalCitations) * 100) : 0;
+                  
+                  // Max limits for scales
+                  const maxOppRate = Math.max(geoRow.citation_rate || 0, controlRow.citation_rate || 0) || 1;
+                  const maxEng = Math.max(geoRow.engagement_per_citation || 0, controlRow.engagement_per_citation || 0) || 1;
+
+                  return (
+                    <div className="outcomes-dashboard">
+                      <div className="probe-section outcomes-section">
+                        <h4>1. Overall Performance (Total Citations)</h4>
+                        <p className="probe-explanation">How often did the AI recommend products from each group?</p>
+                        <div className="probe-split-bar">
+                          {geoPct > 0 && <div className="probe-split-geo" style={{ width: `${geoPct}%` }}>{geoPct}% GEO ({formatNumber(geoRow.citation_events)})</div>}
+                          {controlPct > 0 && <div className="probe-split-control" style={{ width: `${controlPct}%` }}>{controlPct}% Control ({formatNumber(controlRow.citation_events)})</div>}
+                          {totalCitations === 0 && <div className="probe-split-control" style={{ width: "100%", background: "#e5e7eb", color: "#6b7280" }}>No citations yet</div>}
+                        </div>
+                      </div>
+
+                      <div className="probe-section outcomes-section">
+                        <h4>2. Opportunity Rate (Visibility)</h4>
+                        <p className="probe-explanation">When a product was relevant to a user's search, how often did the AI actually recommend it?</p>
+                        <div className="probe-rank-bars">
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">GEO Optimized</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${((geoRow.citation_rate || 0) / maxOppRate) * 100}%` }}>
+                                {formatPercent(geoRow.citation_rate)}
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(geoRow.citation_events)} / {formatNumber(geoRow.candidate_opportunities)})</span>
+                          </div>
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">Control</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${((controlRow.citation_rate || 0) / maxOppRate) * 100}%` }}>
+                                {formatPercent(controlRow.citation_rate)}
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(controlRow.citation_events)} / {formatNumber(controlRow.candidate_opportunities)})</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="probe-section outcomes-section">
+                        <h4>3. User Engagement</h4>
+                        <p className="probe-explanation">When a product was recommended, how often did users actually interact with it?</p>
+                        <div className="probe-rank-bars">
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">GEO Optimized</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${((geoRow.engagement_per_citation || 0) / maxEng) * 100}%` }}>
+                                {formatNumber(geoRow.engagement_per_citation, 2)} / citation
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(geoRow.engagement_events)} total)</span>
+                          </div>
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">Control</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${((controlRow.engagement_per_citation || 0) / maxEng) * 100}%` }}>
+                                {formatNumber(controlRow.engagement_per_citation, 2)} / citation
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(controlRow.engagement_events)} total)</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="probe-section outcomes-section">
+                        <h4>4. Purchase Intent</h4>
+                        <p className="probe-explanation">When a product was recommended, how often did users click 'Buy on Amazon'?</p>
+                        <div className="probe-rank-bars">
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">GEO Optimized</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${maxEng ? ((geoRow.purchases_per_citation || 0) / maxEng) * 100 : 0}%` }}>
+                                {formatNumber(geoRow.purchases_per_citation || 0, 2)} / citation
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(geoRow.purchase_events || 0)} total)</span>
+                          </div>
+                          <div className="probe-rank-row">
+                            <span className="probe-rank-label">Control</span>
+                            <div className="probe-rank-track">
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${maxEng ? ((controlRow.purchases_per_citation || 0) / maxEng) * 100 : 0}%` }}>
+                                {formatNumber(controlRow.purchases_per_citation || 0, 2)} / citation
+                              </div>
+                            </div>
+                            <span className="outcomes-fraction">({formatNumber(controlRow.purchase_events || 0)} total)</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                        <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>Raw Data Export</p>
+                        <table>
+                          <thead><tr><th>Condition</th><th>Citations</th><th>Opportunity rate</th><th>Mean score</th><th>Reference engagement</th><th>Purchases</th></tr></thead>
+                          <tbody>
+                            {dashboard?.by_condition.length ? dashboard.by_condition.map((row) => (
+                              <tr key={row.condition}>
+                                <td><ConditionChip value={row.condition} /></td>
+                                <td>{formatNumber(row.citation_events)} / {formatNumber(row.candidate_opportunities)}</td>
+                                <td>{formatPercent(row.citation_rate)}</td>
+                                <td>{formatNumber(row.mean_retrieval_score, 2)}</td>
+                                <td>{formatNumber(row.engagement_events)} ({formatNumber(row.engagement_per_citation, 2)} / citation)</td>
+                                <td>{formatNumber(row.purchase_events || 0)} ({formatNumber(row.purchases_per_citation || 0, 2)} / citation)</td>
+                              </tr>
+                            )) : <tr><td colSpan={6} className="empty-cell">{loading ? "Loading data…" : "No participant search data yet."}</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      <p className="footnote">{dashboard?.interpretation_note}</p>
+                    </div>
+                  );
+                })() : <div className="empty-cell" style={{ padding: "2rem" }}>{loading ? "Loading data…" : "No participant search data yet."}</div>}
               </section>
 
               <section className="panel">
@@ -355,8 +464,218 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
               <details className="advanced-probe-options"><summary>Record engine and model metadata</summary><label>Engine name<input maxLength={120} value={probe.engineName} onChange={(event) => setProbe({ ...probe, engineName: event.target.value })} /></label><label>Model version<input maxLength={120} value={probe.modelVersion} onChange={(event) => setProbe({ ...probe, modelVersion: event.target.value })} /></label><label>Locale<input maxLength={60} value={probe.locale} onChange={(event) => setProbe({ ...probe, locale: event.target.value })} placeholder="e.g., en-IN" /></label></details>
               <button className="primary-button" type="submit" disabled={runningProbe}>{runningProbe ? "Running…" : "Run controlled probe"}</button>
               {probeError && <p className="form-error" role="alert">{probeError}</p>}
-              {probeResult && <div className="probe-result"><strong>{probeResult.runs.length} controlled run(s) logged.</strong>{probeResult.runs.map((run) => <p key={run.probe_run_id}>Run {run.repetition}: {run.cited_products.join(", ") || "no citation"}</p>)}</div>}
             </form>
+            {probeResult && (
+              <div className="probe-result probe-analytics-dashboard" style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
+                  {(() => {
+                    // ── Aggregate stats ──
+                    let geoCount = 0;
+                    let controlCount = 0;
+                    let otherCount = 0;
+                    const geoProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
+                    const controlProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
+                    const geoRanks: number[] = [];
+                    const controlRanks: number[] = [];
+
+                    probeResult.runs.forEach(run => {
+                      (run.cited_conditions || []).forEach(condition => {
+                        if (condition === "GEO_OPTIMIZED") geoCount++;
+                        else if (condition === "CONTROL") controlCount++;
+                        else otherCount++;
+                      });
+                      (run.candidates || []).forEach(c => {
+                        const bucket = c.condition === "GEO_OPTIMIZED" ? geoProducts : controlProducts;
+                        const existing = bucket.get(c.product_id) || { title: c.title, ranks: [], scores: [], citedCount: 0, category: c.category };
+                        existing.ranks.push(c.rank_position);
+                        existing.scores.push(c.retrieval_score);
+                        if (c.cited) existing.citedCount++;
+                        bucket.set(c.product_id, existing);
+                        if (c.cited) {
+                          if (c.condition === "GEO_OPTIMIZED") geoRanks.push(c.rank_position);
+                          else if (c.condition === "CONTROL") controlRanks.push(c.rank_position);
+                        }
+                      });
+                    });
+
+                    const totalCitations = geoCount + controlCount + otherCount;
+                    const geoPct = totalCitations ? Math.round((geoCount / totalCitations) * 100) : 0;
+                    const controlPct = totalCitations ? Math.round((controlCount / totalCitations) * 100) : 0;
+                    const avgGeoRank = geoRanks.length ? (geoRanks.reduce((a, b) => a + b, 0) / geoRanks.length) : null;
+                    const avgControlRank = controlRanks.length ? (controlRanks.reduce((a, b) => a + b, 0) / controlRanks.length) : null;
+
+                    const maxScore = Math.max(
+                      ...probeResult.runs.flatMap(r => (r.candidates || []).map(c => c.retrieval_score)),
+                      1
+                    );
+
+                    return (
+                      <>
+                        {/* ── Section 1: Summary header ── */}
+                        <div className="probe-summary-header">
+                          <h3>Probe Analysis Report</h3>
+                          <p className="probe-meta">{probeResult.runs.length} run(s) · Query: <em>"{probeResult.query}"</em></p>
+                        </div>
+
+                        {/* ── Section 2: Key metrics cards ── */}
+                        <div className="probe-metrics-row">
+                          <div className="probe-metric-card probe-metric-geo">
+                            <span className="probe-metric-label">GEO Optimized Citations</span>
+                            <strong className="probe-metric-value">{geoCount}</strong>
+                            <span className="probe-metric-pct">{geoPct}%</span>
+                          </div>
+                          <div className="probe-metric-card probe-metric-control">
+                            <span className="probe-metric-label">Control Citations</span>
+                            <strong className="probe-metric-value">{controlCount}</strong>
+                            <span className="probe-metric-pct">{controlPct}%</span>
+                          </div>
+                          <div className="probe-metric-card">
+                            <span className="probe-metric-label">Avg GEO Rank</span>
+                            <strong className="probe-metric-value">{avgGeoRank !== null ? `#${avgGeoRank.toFixed(1)}` : "—"}</strong>
+                          </div>
+                          <div className="probe-metric-card">
+                            <span className="probe-metric-label">Avg Control Rank</span>
+                            <strong className="probe-metric-value">{avgControlRank !== null ? `#${avgControlRank.toFixed(1)}` : "—"}</strong>
+                          </div>
+                        </div>
+
+                        {/* ── Section 3: Citation split bar ── */}
+                        {totalCitations > 0 && (
+                          <div className="probe-section">
+                            <h4>Citation Split</h4>
+                            <p className="probe-explanation">
+                              When the AI answered your question, it recommended products to the user. This chart shows the proportion of those recommendations that came from your optimized products vs the untouched control products.
+                              {geoPct > controlPct
+                                ? " Your optimization strategy is working — the AI is preferring your optimized products."
+                                : geoPct < controlPct
+                                ? " The control group is being cited more often. Consider adjusting your optimization strategy."
+                                : " The two groups are performing equally."}
+                            </p>
+                            <div className="probe-split-bar">
+                              {geoCount > 0 && <div className="probe-split-geo" style={{ width: `${(geoCount / totalCitations) * 100}%` }}>{geoPct}% GEO</div>}
+                              {controlCount > 0 && <div className="probe-split-control" style={{ width: `${(controlCount / totalCitations) * 100}%` }}>{controlPct}% Control</div>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Section 4: Average rank comparison ── */}
+                        {(avgGeoRank !== null || avgControlRank !== null) && (
+                          <div className="probe-section">
+                            <h4>Average Rank When Cited</h4>
+                            <p className="probe-explanation">
+                              A lower rank number means the product appeared higher (closer to #1) in the AI's response. Think of it like a race — position #1 is the winner.
+                            </p>
+                            <div className="probe-rank-bars">
+                              {avgGeoRank !== null && (
+                                <div className="probe-rank-row">
+                                  <span className="probe-rank-label">GEO Optimized</span>
+                                  <div className="probe-rank-track">
+                                    <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min((avgGeoRank / 10) * 100, 100)}%` }}>
+                                      #{avgGeoRank.toFixed(1)}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {avgControlRank !== null && (
+                                <div className="probe-rank-row">
+                                  <span className="probe-rank-label">Control</span>
+                                  <div className="probe-rank-track">
+                                    <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min((avgControlRank / 10) * 100, 100)}%` }}>
+                                      #{avgControlRank.toFixed(1)}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Section 5: Per-run breakdown ── */}
+                        {probeResult.runs.map((run) => (
+                          <details key={run.probe_run_id} className="probe-run-detail" open={probeResult.runs.length <= 3}>
+                            <summary className="probe-run-summary">
+                              <span>Run {run.repetition}</span>
+                              <span className="probe-run-cited-count">{run.cited_products.length} product(s) cited</span>
+                            </summary>
+                            <div className="probe-run-body">
+                              {/* AI Answer */}
+                              {run.answer && (
+                                <div className="probe-ai-answer">
+                                  <h5>AI's Answer</h5>
+                                  <p>{run.answer}</p>
+                                </div>
+                              )}
+
+                              {/* Candidate ranking table */}
+                              {run.candidates && run.candidates.length > 0 && (
+                                <div className="probe-candidates-section">
+                                  <h5>Product Ranking</h5>
+                                  <p className="probe-explanation">
+                                    These are the top products the AI considered, ordered by their relevance score. Products highlighted in <strong style={{ color: "var(--color-primary)" }}>green</strong> are GEO optimized; <strong style={{ color: "#6b7280" }}>gray</strong> ones are control. A "Yes" means the AI actually cited (recommended) that product in its answer.
+                                  </p>
+                                  <div className="probe-candidates-table">
+                                    <div className="probe-candidate-header">
+                                      <span className="probe-col-rank">#</span>
+                                      <span className="probe-col-product">Product</span>
+                                      <span className="probe-col-condition">Group</span>
+                                      <span className="probe-col-score">Relevance Score</span>
+                                      <span className="probe-col-cited">Cited?</span>
+                                    </div>
+                                    {run.candidates.map((c) => (
+                                      <div key={`${run.probe_run_id}-${c.product_id}`} className={`probe-candidate-row ${c.condition === "GEO_OPTIMIZED" ? "probe-row-geo" : "probe-row-control"} ${c.cited ? "probe-row-cited" : ""}`}>
+                                        <span className="probe-col-rank">{c.rank_position}</span>
+                                        <span className="probe-col-product" title={c.title}>{c.title.length > 60 ? c.title.substring(0, 57) + "…" : c.title}</span>
+                                        <span className={`probe-col-condition probe-condition-chip ${c.condition === "GEO_OPTIMIZED" ? "chip-geo" : "chip-control"}`}>
+                                          {c.condition === "GEO_OPTIMIZED" ? "GEO" : "Control"}
+                                        </span>
+                                        <span className="probe-col-score">
+                                          <span className="probe-score-bar-track">
+                                            <span className={`probe-score-bar-fill ${c.condition === "GEO_OPTIMIZED" ? "fill-geo" : "fill-control"}`} style={{ width: `${(c.retrieval_score / maxScore) * 100}%` }}></span>
+                                          </span>
+                                          <span className="probe-score-num">{c.retrieval_score.toFixed(1)}</span>
+                                        </span>
+                                        <span className="probe-col-cited">{c.cited ? "Yes" : "—"}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Score breakdown mini-chart */}
+                                  <details className="probe-score-breakdown">
+                                    <summary>View detailed score breakdown</summary>
+                                    <div className="probe-breakdown-grid">
+                                      {run.candidates.filter(c => c.cited).map(c => (
+                                        <div key={`breakdown-${run.probe_run_id}-${c.product_id}`} className="probe-breakdown-item">
+                                          <span className="probe-breakdown-title" title={c.title}>{c.title.length > 40 ? c.title.substring(0, 37) + "…" : c.title}</span>
+                                          <div className="probe-breakdown-bars">
+                                            <div className="probe-breakdown-row">
+                                              <span>Lexical</span>
+                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-lexical" style={{ width: `${maxScore ? (c.lexical_score / maxScore) * 100 : 0}%` }}></div></div>
+                                              <span>{c.lexical_score.toFixed(1)}</span>
+                                            </div>
+                                            <div className="probe-breakdown-row">
+                                              <span>Semantic</span>
+                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-semantic" style={{ width: `${maxScore ? (c.semantic_score / maxScore) * 100 : 0}%`, background: "linear-gradient(90deg, #8b5cf6, #a78bfa)" }}></div></div>
+                                              <span>{c.semantic_score.toFixed(1)}</span>
+                                            </div>
+                                            <div className="probe-breakdown-row">
+                                              <span>Evidence</span>
+                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-evidence" style={{ width: `${maxScore ? (c.evidence_score / maxScore) * 100 : 0}%` }}></div></div>
+                                              <span>{c.evidence_score.toFixed(1)}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
           </section>
         );
 

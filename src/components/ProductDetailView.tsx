@@ -3,12 +3,14 @@ import { categoryIcon, formatPrice, calculateDiscountPercentage } from "../utils
 interface ProductDetailViewProps {
   product: Product | null;
   onClose: () => void;
+  onBuyClick?: (product: Product) => void;
 }
 
 /** Participant-only product presentation, rendered inside the chat pane. */
 export function ProductDetailView({
   product,
   onClose,
+  onBuyClick,
 }: ProductDetailViewProps) {
   if (!product) return null;
   const page = product.product_page;
@@ -90,6 +92,7 @@ export function ProductDetailView({
               target="_blank"
               rel="noopener noreferrer"
               className="buy-on-amazon-btn"
+              onClick={() => onBuyClick?.(product)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

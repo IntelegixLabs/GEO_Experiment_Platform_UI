@@ -218,6 +218,10 @@ export function ParticipantExperience({
     record(source === "citation" ? "citation_open" : "product_open", product.id, { source }, queryId);
   }
 
+  function trackPurchaseIntent(product: Product) {
+    record("purchase_intent", product.id);
+  }
+
   function addComparison(product: Product) {
     if (comparisons.some((item) => item.id === product.id) || comparisons.length >= 4) return;
     const next = [...comparisons, product];
@@ -548,6 +552,7 @@ export function ParticipantExperience({
                         target="_blank"
                         rel="noopener noreferrer"
                         className="catalog-card-buy-btn"
+                        onClick={() => trackPurchaseIntent(product)}
                         title="Buy on Amazon (opens in new tab)"
                         aria-label={`Buy ${product.title} on Amazon in a new tab`}
                         style={{
@@ -749,13 +754,45 @@ export function ParticipantExperience({
                   )}
 
                   {chatInlineProduct && (
-                    <div className="premium-assistant-inline-product premium-message-row assistant-row" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                      <div className="premium-message assistant-message" style={{ width: '100%', maxWidth: '1000px', padding: 0, overflow: 'hidden' }}>
-                        <ProductDetailView product={chatInlineProduct} onClose={() => setChatInlineProduct(null)} />
+                      <div className="premium-assistant-inline-product premium-message-row assistant-row" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                        <div className="premium-message assistant-message" style={{ width: '100%', maxWidth: '1000px', padding: 0, overflow: 'hidden' }}>
+                          <ProductDetailView product={chatInlineProduct} onClose={() => setChatInlineProduct(null)} onBuyClick={trackPurchaseIntent} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {!surveyComplete && session && messages.length > 1 && (
+                    <div className="survey-banner" style={{
+                      background: '#f0f9ff',
+                      borderTop: '1px solid #bae6fd',
+                      borderBottom: '1px solid #bae6fd',
+                    }}>
+                      <div style={{
+                        maxWidth: '1000px',
+                        margin: '0 auto',
+                        padding: '0.75rem 1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        fontSize: '0.9rem',
+                        color: '#0369a1'
+                      }}>
+                        <span><strong>Feedback Request:</strong> Please take a moment to complete our quick questionnaire.</span>
+                        <button onClick={openSurvey} style={{
+                          background: '#0ea5e9',
+                          color: 'white',
+                          border: 'none',
+                          padding: '0.4rem 0.8rem',
+                          borderRadius: '6px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}>Take Survey</button>
                       </div>
                     </div>
                   )}
-                </div>
 
                 <div className="premium-assistant-input-area">
                   
@@ -808,6 +845,7 @@ export function ParticipantExperience({
              <ProductDetailView 
                product={catalogSelectedProduct} 
                onClose={() => setCatalogSelectedProduct(null)} 
+               onBuyClick={trackPurchaseIntent}
              />
         )}
       </Modal>
