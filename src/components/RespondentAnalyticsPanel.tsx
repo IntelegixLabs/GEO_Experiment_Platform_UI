@@ -8,6 +8,7 @@ import type {
   AnalyticsSurveyConstruct,
   AnalyticsTimelinePoint,
 } from "../types";
+import { DemographicsPanel } from "./DemographicsPanel";
 import { conditionLabel, formatNumber, titleCase } from "../utils/formatters";
 
 interface RespondentAnalyticsPanelProps {
@@ -383,6 +384,8 @@ export function RespondentAnalyticsPanel({ onRefresh }: RespondentAnalyticsPanel
           })}</div> : <div className="analytics-empty-chart">Category-level outcomes appear when candidate opportunities have been logged.</div>}
         </section>
       </div>
+      
+      <DemographicsPanel />
 
       <section className="analytics-respondent-panel" aria-labelledby="analytics-respondent-heading">
         <div className="analytics-panel-heading"><div><p className="eyebrow">Pseudonymous response register</p><h3 id="analytics-respondent-heading">Respondent activity snapshot</h3></div><span>{formatNumber(report?.respondents?.total)} consented records</span></div>
