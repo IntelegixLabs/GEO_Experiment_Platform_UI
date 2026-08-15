@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { DemographicsPanel } from "./DemographicsPanel";
 import { conditionLabel, formatNumber, titleCase } from "../utils/formatters";
+import { Tooltip } from "react-tooltip";
 
 interface RespondentAnalyticsPanelProps {
   onRefresh?: () => Promise<void> | void;
@@ -206,12 +207,18 @@ function TimelineChart({ points }: { points: AnalyticsTimelinePoint[] }) {
         {[.25, .5, .75, 1].map((fraction) => <line className="analytics-timeline-gridline" x1={left} x2={width - 14} y1={16 + innerHeight - (fraction * innerHeight)} y2={16 + innerHeight - (fraction * innerHeight)} key={fraction} />)}
         <path className="analytics-timeline-area" d={area} />
         <path className="analytics-timeline-line" d={line} />
-        {coordinates.map((point, index) => <circle className="analytics-timeline-point" cx={point.x} cy={point.y} r="4" key={points[index].date}><title>{points[index].date + ": " + formatNumber(values[index]) + " queries"}</title></circle>)}
+        {coordinates.map((point, index) => (
+          <g key={points[index].date} data-tooltip-id="timeline-tooltip" data-tooltip-content={`${points[index].date}: ${formatNumber(values[index])} queries`} style={{ cursor: "pointer", outline: "none" }}>
+            <circle cx={point.x} cy={point.y} r="12" fill="transparent" />
+            <circle className="analytics-timeline-point" cx={point.x} cy={point.y} r="4" />
+          </g>
+        ))}
         {points.map((point, index) => {
           if (points.length > 6 && index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) return null;
           return <text className="analytics-timeline-label" x={coordinates[index].x} y={height - 9} textAnchor="middle" key={point.date + "-label"}>{point.date.slice(5)}</text>;
         })}
       </svg>
+      <Tooltip id="timeline-tooltip" style={{ backgroundColor: "#163b43", color: "#fff", borderRadius: "4px", padding: "6px 12px", fontSize: "0.85rem", zIndex: 100 }} />
       <div className="analytics-timeline-key"><span><i />Queries</span><span>Peak: <strong>{formatNumber(maximum)}</strong> in one period</span></div>
     </div>
   );
