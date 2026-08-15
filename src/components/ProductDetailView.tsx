@@ -1,5 +1,6 @@
 import type { Product } from "../types";
 import { categoryIcon, formatPrice, calculateDiscountPercentage } from "../utils/formatters";
+
 interface ProductDetailViewProps {
   product: Product | null;
   onClose: () => void;
@@ -13,6 +14,7 @@ export function ProductDetailView({
   onBuyClick,
 }: ProductDetailViewProps) {
   if (!product) return null;
+  
   const page = product.product_page;
   const features = page?.key_features?.length ? page.key_features : product.key_features || [];
   const specifications = Object.entries(page?.specifications || {});
@@ -20,183 +22,191 @@ export function ProductDetailView({
   const faq = page?.faq || [];
 
   return (
-    <div className="product-detail-view" style={{ flex: 1, padding: '0.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
+    <div className="product-detail-view" style={{ 
+      background: '#ffffff', 
+      border: '1px solid #e2e8f0', 
+      borderRadius: '10px', 
+      padding: '1rem', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      gap: '1rem', 
+      position: 'relative',
+      boxShadow: '0 2px 4px -1px rgba(0, 0, 0, 0.05)'
+    }}>
+      
+      {/* Close Button */}
       <button 
         type="button" 
         onClick={onClose} 
         aria-label="Close product details"
-        style={{ position: 'absolute', top: 0, right: 0, background: 'transparent', border: 'none', color: '#6b7c80', cursor: 'pointer', padding: '0.5rem' }}
+        style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: '#f8fafc', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s', zIndex: 10 }}
+        onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+        onMouseOut={(e) => e.currentTarget.style.background = '#f8fafc'}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
-      <header className="detail-header" style={{ marginTop: '0', paddingRight: '2rem' }}>
-        <div className={`product-visual large retail-product-visual detail-product-visual category-${product.category.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`} aria-hidden="true">
-          <span className="visual-glyph">{categoryIcon(product.category)}</span>
-          {product.image_url && <img src={product.image_url} alt="" onError={(event) => { event.currentTarget.hidden = true; }} />}
-        </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
-            <span className="eyebrow" style={{ margin: 0 }}>{product.category}</span>
-            {product.sub_category && (
-              <>
-                <span style={{ color: '#9ca3af' }}>•</span>
-                <span className="eyebrow" style={{ margin: 0, color: '#4f46e5' }}>{product.sub_category}</span>
-              </>
-            )}
-          </div>
-          <h2 id="product-title">{product.title}</h2>
-          <p className="detail-brand">{product.brand || "Catalog item"}</p>
-          {product.rating !== null && product.rating !== undefined && product.rating !== "" && (
-            <p className="product-rating" aria-label={`Rated ${product.rating}${product.review_count ? ` from ${Number(product.review_count).toLocaleString()} ratings` : ""}`}>
-              <span aria-hidden="true">Rating</span> <strong>{product.rating}</strong>
-              {product.review_count ? <small> ({Number(product.review_count).toLocaleString()} ratings)</small> : null}
-            </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
+        
+        {/* Left Column: Image */}
+        <div style={{ 
+          background: '#f8fafc', 
+          borderRadius: '6px', 
+          height: '180px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          padding: '1rem',
+          border: '1px solid #f1f5f9'
+        }}>
+          {product.image_url ? (
+            <img src={product.image_url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} onError={(event) => { event.currentTarget.hidden = true; }} />
+          ) : (
+            <div style={{ color: '#cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '2rem' }}>{categoryIcon(product.category)}</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>No image</span>
+            </div>
           )}
         </div>
-      </header>
 
-      <div className="detail-price-box" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: '#f8fafc', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', margin: '0.5rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: '1.8rem', color: '#0f172a', fontWeight: 800 }}>{formatPrice(product)}</strong>
-          {product.actual_price && Number(product.actual_price) > Number(product.price || 0) && (
-            <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: '1.15rem', fontWeight: 500 }}>
-              {formatPrice({ price: product.actual_price, currency: product.currency })}
-            </span>
-          )}
-          {(() => {
-            const discountPct = calculateDiscountPercentage(product.discount_price, product.actual_price, product.price);
-            return discountPct ? (
-              <span style={{ background: '#dcfce7', color: '#15803d', padding: '0.25rem 0.65rem', borderRadius: '9999px', fontSize: '0.85rem', fontWeight: 700, border: '1px solid #bbf7d0', letterSpacing: '0.025em' }}>
-                {discountPct}% OFF
+        {/* Right Column: Key Details */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {product.category}
               </span>
-            ) : null;
-          })()}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.85rem', color: '#475569' }}>
-            {product.availability || "Catalog availability not supplied"}
-          </span>
-          {product.actual_price && Number(product.actual_price) > Number(product.price || 0) && (
-            <span style={{ fontSize: '0.85rem', color: '#16a34a', fontWeight: 600 }}>
-              You save {formatPrice({ price: Number(product.actual_price) - Number(product.price || 0), currency: product.currency })}
-            </span>
-          )}
-        </div>
-
-        {product.source_url ? (
-          <div style={{ marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <a
-              href={product.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="buy-on-amazon-btn"
-              onClick={() => onBuyClick?.(product)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem 1.75rem',
-                background: 'linear-gradient(135deg, #ff9900 0%, #ff8800 100%)',
-                color: '#111111',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                boxShadow: '0 4px 12px rgba(255, 153, 0, 0.3)',
-                transition: 'all 0.2s ease',
-              }}
-              aria-label={`Buy ${product.title} on Amazon in a new tab`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-              Buy on Amazon
-            </a>
-            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              Opens original product page in a new tab
-            </span>
+              {product.sub_category && (
+                <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>
+                  › {product.sub_category}
+                </span>
+              )}
+            </div>
+            
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1.3 }}>
+              {product.title}
+            </h2>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>{product.brand || "Catalog item"}</span>
+              
+              {product.rating !== null && product.rating !== undefined && product.rating !== "" && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#d97706" stroke="#d97706" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                  <strong style={{ color: '#92400e', fontSize: '0.8rem' }}>{product.rating}</strong>
+                  {product.review_count && <span style={{ color: '#b45309', fontSize: '0.75rem' }}>({Number(product.review_count).toLocaleString()})</span>}
+                </div>
+              )}
+            </div>
           </div>
-        ) : null}
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '1.4rem', color: '#0f172a', fontWeight: 800, lineHeight: 1 }}>{formatPrice(product)}</strong>
+              
+              {product.actual_price && Number(product.actual_price) > Number(product.price || 0) && (
+                <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.95rem', fontWeight: 500 }}>
+                  {formatPrice({ price: product.actual_price, currency: product.currency })}
+                </span>
+              )}
+              
+              {(() => {
+                const discountPct = calculateDiscountPercentage(product.discount_price, product.actual_price, product.price);
+                return discountPct ? (
+                  <span style={{ color: '#16a34a', fontSize: '0.8rem', fontWeight: 700 }}>
+                    {discountPct}% OFF
+                  </span>
+                ) : null;
+              })()}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {product.availability || "Catalog availability not supplied"}
+              </div>
+
+              {product.source_url && (
+                <a
+                  href={product.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => onBuyClick?.(product)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    padding: '0.4rem 0.75rem',
+                    background: '#0ea5e9',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    borderRadius: '4px',
+                    textDecoration: 'none',
+                    transition: 'background 0.2s ease',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#0284c7'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#0ea5e9'}
+                >
+                  Buy Now
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </a>
+              )}
+            </div>
+          </div>
+          
+        </div>
       </div>
 
-      <p className="detail-description">{page?.description || product.description || "Product information is available in this study catalog."}</p>
-
-      {features.length > 0 && (
-        <section>
-          <h3>Key product features</h3>
-          <ul className="feature-list detail-features">{features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
-        </section>
-      )}
-
-      {specifications.length > 0 && (
-        <section className="structured-section">
-          <h3>Product details</h3>
-          <dl className="spec-list">{specifications.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-        </section>
-      )}
-
-      {claims.length > 0 && (
-        <section className="structured-section">
-          <h3>Supporting product information</h3>
-          <ul className="claim-list">{claims.map((claim, index) => <li key={`${claim.claim}-${index}`}><strong>{claim.claim}</strong><span>{claim.evidence}</span></li>)}</ul>
-        </section>
-      )}
-
-      {faq.length > 0 && (
-        <section className="structured-section">
-          <h3>Common questions</h3>
-          {faq.map((item, index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>)}
-        </section>
-      )}
-
-      <section className="detail-offer" aria-label="Catalog fulfillment information">
-        <span>Shipping: {product.shipping || "Not supplied"}</span>
-        <span>Returns: {product.return_policy || "Not supplied"}</span>
-      </section>
-
-      {product.condition === "GEO_OPTIMIZED" && product.geo_bundle && (
-        <details className="structured-section" style={{ marginTop: '1rem', background: '#f0faf8', padding: '1rem', borderRadius: '8px', border: '1px solid #afd2cf' }}>
-          <summary style={{ fontWeight: 700, color: '#126166', cursor: 'pointer' }}>Optimization Summary (What was modified)</summary>
-          <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#163b43' }}>
-            {product.geo_bundle.summary && (
-              <div style={{ marginBottom: '10px' }}>
-                <strong style={{ color: '#126166' }}>Factual Summary:</strong>
-                <p style={{ margin: '4px 0 0' }}>{product.geo_bundle.summary}</p>
-              </div>
-            )}
-            {product.geo_bundle.specifications && Object.keys(product.geo_bundle.specifications).length > 0 && (
-              <div style={{ marginBottom: '10px' }}>
-                <strong style={{ color: '#126166' }}>Structured Specifications:</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', marginTop: '4px' }}>
-                  {Object.entries(product.geo_bundle.specifications).map(([k, v]) => (
-                    <div key={k} style={{ display: 'contents' }}>
-                      <span style={{ fontWeight: 700 }}>{k}:</span>
-                      <span>{String(v)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {product.geo_bundle.claim_blocks && product.geo_bundle.claim_blocks.length > 0 && (
-              <div>
-                <strong style={{ color: '#126166' }}>Claim-Evidence Links:</strong>
-                <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>
-                  {product.geo_bundle.claim_blocks.map((block: any, i: number) => (
-                    <li key={i}>
-                      <strong>{block.claim}</strong> — <span style={{ color: '#5e757a' }}>{block.evidence}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        
+        {page?.description || product.description ? (
+          <div>
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.25rem 0', fontWeight: 600 }}>About this item</h3>
+            <p style={{ fontSize: '0.85rem', color: '#334155', lineHeight: 1.5, margin: 0 }}>
+              {page?.description || product.description}
+            </p>
           </div>
-        </details>
-      )}
+        ) : null}
 
+        {features.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.25rem 0', fontWeight: 600 }}>Key Features</h3>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#334155', fontSize: '0.85rem', lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              {features.map((feature, i) => <li key={i}>{feature}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {specifications.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.4rem 0', fontWeight: 600 }}>Specifications</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.4rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              {specifications.map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+                  <span style={{ fontSize: '0.85rem', color: '#0f172a', fontWeight: 500, lineHeight: 1.2 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {claims.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.4rem 0', fontWeight: 600 }}>Verified Claims</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+              {claims.map((claim, index) => (
+                <div key={index} style={{ background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
+                  <div style={{ fontWeight: 600, color: '#0f766e', fontSize: '0.85rem', marginBottom: '0.15rem', lineHeight: 1.2 }}>{claim.claim}</div>
+                  <div style={{ color: '#115e59', fontSize: '0.75rem', lineHeight: 1.3 }}>{claim.evidence}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

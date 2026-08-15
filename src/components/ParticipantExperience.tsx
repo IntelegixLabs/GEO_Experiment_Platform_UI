@@ -93,7 +93,7 @@ export function ParticipantExperience({
   const [surveyOpen, setSurveyOpen] = useState(false);
 
   const [catalogSelectedProduct, setCatalogSelectedProduct] = useState<Product | null>(null);
-  const [chatInlineProduct, setChatInlineProduct] = useState<Product | null>(null);
+  const [chatInlineProduct, setChatInlineProduct] = useState<{product: Product, messageId: string} | null>(null);
   const [comparisons, setComparisons] = useState<Product[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: "welcome",
@@ -698,26 +698,57 @@ export function ParticipantExperience({
                       <div className={`premium-message ${message.author}-message`}>
                         <FormattedMessage text={message.text} />
                         {message.citations && message.citations.length > 0 && (
-                          <div className="premium-citation-stack">
+                          <div className="premium-citation-grid" style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gap: '12px',
+                            marginTop: '16px'
+                          }}>
                             {message.citations.map((citation, index) => (
-                              <button className="premium-citation-card" type="button" key={citation.product.id} onClick={() => setChatInlineProduct(citation.product)}>
+                              <div className="premium-citation-card-square" key={citation.product.id} style={{
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '12px',
+                                background: 'white',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                              }}>
                                 {citation.product.image_url && (
-                                  <div className="premium-citation-image">
-                                    <img src={citation.product.image_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />
+                                  <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', background: '#f8fafc', borderRadius: '4px' }} onClick={() => {
+                                    record("citation_interaction", citation.product.id, { source: "citation_image" }, message.queryId);
+                                    setChatInlineProduct({ product: citation.product, messageId: message.id as string });
+                                  }}>
+                                    <img src={citation.product.image_url} alt="" loading="lazy" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} onError={(event) => { event.currentTarget.hidden = true; }} />
                                   </div>
                                 )}
-                                <div className="premium-citation-content">
-                                  <div className="premium-citation-header">
-                                    <span className="premium-citation-rank">[C{index + 1}]</span>
-                                    <strong>{citation.product.title}</strong>
-                                  </div>
-                                  <div className="premium-citation-footer">
-                                    <span>{formatPrice(citation.product)}</span>
-                                    <span className="premium-citation-open">View</span>
+                                <div style={{ fontSize: '0.85rem', fontWeight: '600', lineHeight: '1.3', flexGrow: 1, cursor: 'pointer' }} onClick={() => {
+                                    record("citation_interaction", citation.product.id, { source: "citation_title" }, message.queryId);
+                                    setChatInlineProduct({ product: citation.product, messageId: message.id as string });
+                                }}>
+                                  <span style={{ color: '#0ea5e9', marginRight: '4px' }}>[C{index + 1}]</span>
+                                  {citation.product.title.length > 70 ? citation.product.title.substring(0, 70) + "..." : citation.product.title}
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
+                                  <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{formatPrice(citation.product)}</span>
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button onClick={() => {
+                                        record("citation_interaction", citation.product.id, { source: "citation_view" }, message.queryId);
+                                        setChatInlineProduct({ product: citation.product, messageId: message.id as string });
+                                      }} style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', color: '#334155' }}>View</button>
+                                    <a href={citation.product.source_url} target="_blank" rel="noopener noreferrer" onClick={() => {
+                                      record("purchase_intent", citation.product.id, { source: "citation_buy" }, message.queryId);
+                                    }} style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', background: '#0ea5e9', color: 'white', border: '1px solid #0ea5e9', cursor: 'pointer', textDecoration: 'none' }}>Buy Now</a>
                                   </div>
                                 </div>
-                              </button>
+                              </div>
                             ))}
+                          </div>
+                        )}
+                        {chatInlineProduct && chatInlineProduct.messageId === message.id && (
+                          <div style={{ marginTop: '1rem', width: '100%', maxWidth: '1000px', padding: 0, overflow: 'hidden' }}>
+                            <ProductDetailView product={chatInlineProduct.product} onClose={() => setChatInlineProduct(null)} onBuyClick={trackPurchaseIntent} />
                           </div>
                         )}
                       </div>
@@ -753,16 +784,43 @@ export function ParticipantExperience({
                     </div>
                   )}
 
-                  {chatInlineProduct && (
-                      <div className="premium-assistant-inline-product premium-message-row assistant-row" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                        <div className="premium-message assistant-message" style={{ width: '100%', maxWidth: '1000px', padding: 0, overflow: 'hidden' }}>
-                          <ProductDetailView product={chatInlineProduct} onClose={() => setChatInlineProduct(null)} onBuyClick={trackPurchaseIntent} />
+                  </div>
+                  
+                  {!surveyComplete && session && messages.filter(m => m.author === 'participant').length < 5 && (
+                      <div className="survey-progress-banner" style={{
+                        background: '#f8fafc',
+                        borderTop: '1px solid #e2e8f0',
+                        borderBottom: '1px solid #e2e8f0',
+                      }}>
+                        <div style={{
+                          maxWidth: '1000px',
+                          margin: '0 auto',
+                          padding: '0.75rem 1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '1rem',
+                          fontSize: '0.9rem',
+                          color: '#475569'
+                        }}>
+                          <span><strong>Task Progress:</strong> Ask {5 - messages.filter(m => m.author === 'participant').length} more question{5 - messages.filter(m => m.author === 'participant').length > 1 ? 's' : ''} to unlock the feedback survey.</span>
+                          
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {[...Array(5)].map((_, i) => (
+                              <div key={i} style={{
+                                width: '32px',
+                                height: '8px',
+                                borderRadius: '4px',
+                                background: i < messages.filter(m => m.author === 'participant').length ? '#0ea5e9' : '#cbd5e1',
+                                transition: 'background 0.3s ease'
+                              }} />
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}
-                  </div>
-                  
-                  {!surveyComplete && session && messages.length > 1 && (
+                    
+                    {!surveyComplete && session && messages.filter(m => m.author === 'participant').length >= 5 && (
                     <div className="survey-banner" style={{
                       background: '#f0f9ff',
                       borderTop: '1px solid #bae6fd',
