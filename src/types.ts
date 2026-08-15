@@ -359,6 +359,7 @@ export interface AnalyticsReport {
 export type EventType =
   | "product_open"
   | "citation_open"
+  | "citation_interaction"
   | "comparison_add"
   | "purchase_intent"
   | "survey_open";
