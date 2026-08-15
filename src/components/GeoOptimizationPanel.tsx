@@ -792,8 +792,38 @@ export function GeoOptimizationPanel({ categories, products, onApplied }: GeoOpt
                         <h4 style={{ margin: "0 0 1rem 0", color: "#2d3748", fontSize: "0.95rem" }}>Optimization Changes</h4>
                         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                           {Object.entries(log.geo_bundle).map(([key, value]) => {
-                            const originalValue = log.original_record?.[key];
-                            if (originalValue === value) return null;
+                            const originalValue = log.original_record?.[key] ?? (() => {
+                              switch (key) {
+                                case "treatment_version": return "Control (Baseline)";
+                                case "summary": return log.original_record?.description || "No description provided.";
+                                case "specifications": return {
+                                  "Product ID": log.original_record?.id || "Not supplied",
+                                  "SKU": log.original_record?.sku || "Not supplied",
+                                  "Name": log.original_record?.title || "Not supplied",
+                                  "Category": log.original_record?.category || "Not supplied",
+                                  "Main Category": log.original_record?.main_category || "Not supplied",
+                                  "Sub Category": log.original_record?.sub_category || "Not supplied",
+                                  "Brand": log.original_record?.brand || "Not supplied",
+                                  "Listed price": log.original_record?.price ? `₹${Number(log.original_record.price).toLocaleString('en-IN', {minimumFractionDigits: 2})}` : "Not supplied",
+                                  "Actual Price": log.original_record?.actual_price ? `₹${Number(log.original_record.actual_price).toLocaleString('en-IN', {minimumFractionDigits: 2})}` : "Not supplied",
+                                  "Discount Price": log.original_record?.discount_price ? `₹${Number(log.original_record.discount_price).toLocaleString('en-IN', {minimumFractionDigits: 2})}` : "Not supplied",
+                                  "Ratings": log.original_record?.rating || "Not supplied",
+                                  "Number of Ratings": log.original_record?.review_count || "Not supplied",
+                                  "Image": log.original_record?.image_url || "Not supplied",
+                                  "Link": log.original_record?.source_url || "Not supplied",
+                                  "Availability": log.original_record?.availability || "Not supplied",
+                                  "Shipping": log.original_record?.shipping || "Not supplied",
+                                  "Returns": log.original_record?.return_policy || "Not supplied",
+                                  "Rating evidence": log.original_record?.rating ? `${log.original_record.rating} out of 5 across ${log.original_record.review_count || 0} reviews` : "Not supplied"
+                                };
+                                case "claim_blocks": return log.original_record?.key_features?.length ? log.original_record.key_features.map((f: string) => ({ claim: f, evidence: "Original product feature" })) : "No features provided.";
+                                case "faq": return "No FAQ provided in original catalog.";
+                                case "evidence_markers": return "No evidence markers in original catalog.";
+                                case "feature_vector": return "N/A (Control)";
+                                case "content_hash": return "N/A (Control)";
+                                default: return "No equivalent in original record.";
+                              }
+                            })();
                             return (
                               <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                                 <div style={{ background: "#fdf8f6", border: "1px solid #fbe8e6", padding: "0.75rem", borderRadius: "6px" }}>

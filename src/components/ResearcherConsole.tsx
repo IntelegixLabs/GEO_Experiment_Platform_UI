@@ -5,16 +5,19 @@ import { ExperimentRunsPanel } from "./ExperimentRunsPanel";
 import { VectorDbInspectorPanel } from "./VectorDbInspectorPanel";
 import { RespondentAnalyticsPanel } from "./RespondentAnalyticsPanel";
 import { RespondentActivityPanel } from "./RespondentActivityPanel";
+import { AgenticGeoLab } from "./AgenticGeoLab";
 import type { DashboardData, ProbeResponse, Product } from "../types";
 import { conditionLabel, formatNumber, formatPercent, titleCase } from "../utils/formatters";
 
 const constructLabels: Record<string, string> = {
-  recommendation_quality: "Recommendation quality",
-  citation_credibility: "Citation credibility",
-  trust: "Trust",
-  usefulness: "Perceived usefulness",
-  risk: "Perceived risk",
-  purchase_intention: "Purchase intention",
+  recommendation_quality: "Perceived Recommendation Quality (RQ)",
+  relevance_accuracy: "Perceived Relevance / Accuracy (RA)",
+  usefulness: "Perceived Usefulness (PU)",
+  trust: "Trust in AI Recommendation (TR)",
+  decision_satisfaction: "Decision-Making Satisfaction (DS)",
+  agent_satisfaction: "Recommendation-Agent Satisfaction (RS)",
+  purchase_intention: "Purchase Intention (PI)",
+  reuse_intention: "Intention to Reuse AI Recommendation (RI)",
 };
 
 const exportDatasets = [
@@ -28,7 +31,7 @@ const exportDatasets = [
   ["surveys", "Surveys"],
 ] as const;
 
-type TabId = "experiment" | "runs" | "vectordb" | "analytics" | "respondents" | "outcomes" | "catalog" | "probes" | "exports";
+type TabId = "experiment" | "runs" | "vectordb" | "analytics" | "respondents" | "outcomes" | "catalog" | "evaluation_lab" | "exports";
 
 import type { ReactNode } from "react";
 
@@ -117,6 +120,15 @@ function IconRespondents() {
   );
 }
 
+function IconSearch() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
 interface TabDef {
   id: TabId;
   label: string;
@@ -131,8 +143,8 @@ const tabs: TabDef[] = [
   { id: "analytics", label: "Analytics", icon: IconAnalytics, description: "Respondent outcomes" },
   { id: "respondents", label: "Respondent Activity", icon: IconRespondents, description: "Participant profiles & logs" },
   { id: "outcomes", label: "Outcomes", icon: IconOutcomes, description: "Metrics & engagement" },
+  { id: "evaluation_lab", label: "Evaluation Lab", icon: IconSearch, description: "Test per-product strategies & probes" },
   { id: "catalog", label: "Catalog", icon: IconCatalog, description: "Products & import" },
-  { id: "probes", label: "Probes", icon: IconProbes, description: "Controlled evaluation" },
   { id: "exports", label: "Exports", icon: IconExports, description: "Download study data" },
 ];
 
@@ -151,6 +163,9 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
   const [activeTab, setActiveTab] = useState<TabId>("experiment");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPage, setProductPage] = useState(0);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const PRODUCTS_PER_PAGE = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -170,13 +185,12 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
   const [probeError, setProbeError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refreshDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [nextDashboard, nextProducts] = await Promise.all([api.getDashboard(), api.getResearchProducts()]);
+      const nextDashboard = await api.getDashboard();
       setDashboard(nextDashboard);
-      setProducts(nextProducts.products);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load the researcher dashboard.");
     } finally {
@@ -184,7 +198,18 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const fetchProducts = useCallback(async () => {
+    try {
+      const nextProducts = await api.getResearchProducts(PRODUCTS_PER_PAGE, productPage * PRODUCTS_PER_PAGE);
+      setProducts(nextProducts.products);
+      setTotalProducts(nextProducts.total);
+    } catch (reason) {
+      console.error(reason);
+    }
+  }, [productPage]);
+
+  useEffect(() => { void refreshDashboard(); }, [refreshDashboard]);
+  useEffect(() => { void fetchProducts(); }, [fetchProducts]);
 
   async function importCsv() {
     if (!csvFile || importing) {
@@ -196,7 +221,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
     try {
       const result = await api.importProducts(await csvFile.text());
       setImportStatus(`${result.imported} product records imported: ${result.control} control, ${result.geo_optimized} GEO-optimized. ${result.message}`);
-      await Promise.all([refresh(), onCatalogImported()]);
+      await Promise.all([refreshDashboard(), fetchProducts(), onCatalogImported()]);
     } catch (reason) {
       setImportStatus(reason instanceof Error ? reason.message : "The product catalog could not be imported.");
     } finally {
@@ -242,9 +267,245 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
             categories={categories}
             products={products}
             onApplied={async () => {
-              await Promise.all([refresh(), onCatalogImported()]);
+              await Promise.all([refreshDashboard(), fetchProducts(), onCatalogImported()]);
             }}
           />
+        );
+
+      case "evaluation_lab":
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+            <AgenticGeoLab products={products} />
+            <section className="panel probe-panel researcher-probe-panel">
+              <div>
+                <p className="eyebrow">Controlled evaluation mode</p>
+                <h2>Run a preregistered probe</h2>
+                <p>Run a fixed shopping query against the controlled catalog without participant data. Record each paraphrase and replication as a separate probe set. This supports retrieval, rank, and citation testing; it does not replace external-engine replication.</p>
+              </div>
+              <form className="probe-controls" onSubmit={submitProbe}>
+                <label>Probe query<input required maxLength={500} value={probe.query} onChange={(event) => setProbe({ ...probe, query: event.target.value })} placeholder="e.g., Compare 750 ml insulated bottles for commuting" /></label>
+                <div className="probe-row">
+                  <label>Probe set<input maxLength={80} value={probe.probeSet} onChange={(event) => setProbe({ ...probe, probeSet: event.target.value })} /></label>
+                  <label>Repetitions<input type="number" min={1} max={10} value={probe.repetitions} onChange={(event) => setProbe({ ...probe, repetitions: Number(event.target.value) || 1 })} /></label>
+                </div>
+                <label>Category filter<select value={probe.category} onChange={(event) => setProbe({ ...probe, category: event.target.value })}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+                <details className="advanced-probe-options"><summary>Record engine and model metadata</summary><label>Engine name<input maxLength={120} value={probe.engineName} onChange={(event) => setProbe({ ...probe, engineName: event.target.value })} /></label><label>Model version<input maxLength={120} value={probe.modelVersion} onChange={(event) => setProbe({ ...probe, modelVersion: event.target.value })} /></label><label>Locale<input maxLength={60} value={probe.locale} onChange={(event) => setProbe({ ...probe, locale: event.target.value })} placeholder="e.g., en-IN" /></label></details>
+                <button className="primary-button" type="submit" disabled={runningProbe}>{runningProbe ? "Running…" : "Run controlled probe"}</button>
+                {probeError && <p className="form-error" role="alert">{probeError}</p>}
+              </form>
+              {probeResult && (
+                <div className="probe-result probe-analytics-dashboard" style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
+                    {(() => {
+                      // ── Aggregate stats ──
+                      let geoCount = 0;
+                      let controlCount = 0;
+                      let otherCount = 0;
+                      const geoProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
+                      const controlProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
+                      const geoRanks: number[] = [];
+                      const controlRanks: number[] = [];
+
+                      probeResult.runs.forEach(run => {
+                        (run.cited_conditions || []).forEach(condition => {
+                          if (condition === "GEO_OPTIMIZED") geoCount++;
+                          else if (condition === "CONTROL") controlCount++;
+                          else otherCount++;
+                        });
+                        (run.candidates || []).forEach(c => {
+                          const bucket = c.condition === "GEO_OPTIMIZED" ? geoProducts : controlProducts;
+                          const existing = bucket.get(c.product_id) || { title: c.title, ranks: [], scores: [], citedCount: 0, category: c.category };
+                          existing.ranks.push(c.rank_position);
+                          existing.scores.push(c.retrieval_score);
+                          if (c.cited) existing.citedCount++;
+                          bucket.set(c.product_id, existing);
+                          if (c.cited) {
+                            if (c.condition === "GEO_OPTIMIZED") geoRanks.push(c.rank_position);
+                            else if (c.condition === "CONTROL") controlRanks.push(c.rank_position);
+                          }
+                        });
+                      });
+
+                      const totalCitations = geoCount + controlCount + otherCount;
+                      const geoPct = totalCitations ? Math.round((geoCount / totalCitations) * 100) : 0;
+                      const controlPct = totalCitations ? Math.round((controlCount / totalCitations) * 100) : 0;
+                      const avgGeoRank = geoRanks.length ? (geoRanks.reduce((a, b) => a + b, 0) / geoRanks.length) : null;
+                      const avgControlRank = controlRanks.length ? (controlRanks.reduce((a, b) => a + b, 0) / controlRanks.length) : null;
+
+                      const maxScore = Math.max(
+                        ...probeResult.runs.flatMap(r => (r.candidates || []).map(c => c.retrieval_score)),
+                        1
+                      );
+
+                      return (
+                        <>
+                          {/* ── Section 1: Summary header ── */}
+                          <div className="probe-summary-header">
+                            <h3>Probe Analysis Report</h3>
+                            <p className="probe-meta">{probeResult.runs.length} run(s) · Query: <em>"{probeResult.query}"</em></p>
+                          </div>
+
+                          {/* ── Section 2: Key metrics cards ── */}
+                          <div className="probe-metrics-row">
+                            <div className="probe-metric-card probe-metric-geo">
+                              <span className="probe-metric-label">GEO Optimized Citations</span>
+                              <strong className="probe-metric-value">{geoCount}</strong>
+                              <span className="probe-metric-pct">{geoPct}%</span>
+                            </div>
+                            <div className="probe-metric-card probe-metric-control">
+                              <span className="probe-metric-label">Control Citations</span>
+                              <strong className="probe-metric-value">{controlCount}</strong>
+                              <span className="probe-metric-pct">{controlPct}%</span>
+                            </div>
+                            <div className="probe-metric-card">
+                              <span className="probe-metric-label">Avg GEO Rank</span>
+                              <strong className="probe-metric-value">{avgGeoRank !== null ? `#${avgGeoRank.toFixed(1)}` : "—"}</strong>
+                            </div>
+                            <div className="probe-metric-card">
+                              <span className="probe-metric-label">Avg Control Rank</span>
+                              <strong className="probe-metric-value">{avgControlRank !== null ? `#${avgControlRank.toFixed(1)}` : "—"}</strong>
+                            </div>
+                          </div>
+
+                          {/* ── Section 3: Citation split bar ── */}
+                          {totalCitations > 0 && (
+                            <div className="probe-section">
+                              <h4>Citation Split</h4>
+                              <p className="probe-explanation">
+                                When the AI answered your question, it recommended products to the user. This chart shows the proportion of those recommendations that came from your optimized products vs the untouched control products.
+                                {geoPct > controlPct
+                                  ? " Your optimization strategy is working — the AI is preferring your optimized products."
+                                  : geoPct < controlPct
+                                  ? " The control group is being cited more often. Consider adjusting your optimization strategy."
+                                  : " The two groups are performing equally."}
+                              </p>
+                              <div className="probe-split-bar">
+                                {geoCount > 0 && <div className="probe-split-geo" style={{ width: `${(geoCount / totalCitations) * 100}%` }}>{geoPct}% GEO</div>}
+                                {controlCount > 0 && <div className="probe-split-control" style={{ width: `${(controlCount / totalCitations) * 100}%` }}>{controlPct}% Control</div>}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Section 4: Average rank comparison ── */}
+                          {(avgGeoRank !== null || avgControlRank !== null) && (
+                            <div className="probe-section">
+                              <h4>Average Rank When Cited</h4>
+                              <p className="probe-explanation">
+                                A lower rank number means the product appeared higher (closer to #1) in the AI's response. Think of it like a race — position #1 is the winner.
+                              </p>
+                              <div className="probe-rank-bars">
+                                {avgGeoRank !== null && (
+                                  <div className="probe-rank-row">
+                                    <span className="probe-rank-label">GEO Optimized</span>
+                                    <div className="probe-rank-track">
+                                      <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min((avgGeoRank / 10) * 100, 100)}%` }}>
+                                        #{avgGeoRank.toFixed(1)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                                {avgControlRank !== null && (
+                                  <div className="probe-rank-row">
+                                    <span className="probe-rank-label">Control</span>
+                                    <div className="probe-rank-track">
+                                      <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min((avgControlRank / 10) * 100, 100)}%` }}>
+                                        #{avgControlRank.toFixed(1)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Section 5: Per-run breakdown ── */}
+                          {probeResult.runs.map((run) => (
+                            <details key={run.probe_run_id} className="probe-run-detail" open={probeResult.runs.length <= 3}>
+                              <summary className="probe-run-summary">
+                                <span>Run {run.repetition}</span>
+                                <span className="probe-run-cited-count">{run.cited_products.length} product(s) cited</span>
+                              </summary>
+                              <div className="probe-run-body">
+                                {/* AI Answer */}
+                                {run.answer && (
+                                  <div className="probe-ai-answer">
+                                    <h5>AI's Answer</h5>
+                                    <p>{run.answer}</p>
+                                  </div>
+                                )}
+
+                                {/* Candidate ranking table */}
+                                {run.candidates && run.candidates.length > 0 && (
+                                  <div className="probe-candidates-section">
+                                    <h5>Product Ranking</h5>
+                                    <p className="probe-explanation">
+                                      These are the top products the AI considered, ordered by their relevance score. Products highlighted in <strong style={{ color: "var(--color-primary)" }}>green</strong> are GEO optimized; <strong style={{ color: "#6b7280" }}>gray</strong> ones are control. A "Yes" means the AI actually cited (recommended) that product in its answer.
+                                    </p>
+                                    <div className="probe-candidates-table">
+                                      <div className="probe-candidate-header">
+                                        <span className="probe-col-rank">#</span>
+                                        <span className="probe-col-product">Product</span>
+                                        <span className="probe-col-condition">Group</span>
+                                        <span className="probe-col-score">Relevance Score</span>
+                                        <span className="probe-col-cited">Cited?</span>
+                                      </div>
+                                      {run.candidates.map((c) => (
+                                        <div key={`${run.probe_run_id}-${c.product_id}`} className={`probe-candidate-row ${c.condition === "GEO_OPTIMIZED" ? "probe-row-geo" : "probe-row-control"} ${c.cited ? "probe-row-cited" : ""}`}>
+                                          <span className="probe-col-rank">{c.rank_position}</span>
+                                          <span className="probe-col-product" title={c.title}>{c.title.length > 60 ? c.title.substring(0, 57) + "…" : c.title}</span>
+                                          <span className={`probe-col-condition probe-condition-chip ${c.condition === "GEO_OPTIMIZED" ? "chip-geo" : "chip-control"}`}>
+                                            {c.condition === "GEO_OPTIMIZED" ? "GEO" : "Control"}
+                                          </span>
+                                          <span className="probe-col-score">
+                                            <span className="probe-score-bar-track">
+                                              <span className={`probe-score-bar-fill ${c.condition === "GEO_OPTIMIZED" ? "fill-geo" : "fill-control"}`} style={{ width: `${(c.retrieval_score / maxScore) * 100}%` }}></span>
+                                            </span>
+                                            <span className="probe-score-num">{c.retrieval_score.toFixed(1)}</span>
+                                          </span>
+                                          <span className="probe-col-cited">{c.cited ? "Yes" : "—"}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {/* Score breakdown mini-chart */}
+                                    <details className="probe-score-breakdown">
+                                      <summary>View detailed score breakdown</summary>
+                                      <div className="probe-breakdown-grid">
+                                        {run.candidates.filter(c => c.cited).map(c => (
+                                          <div key={`breakdown-${run.probe_run_id}-${c.product_id}`} className="probe-breakdown-item">
+                                            <span className="probe-breakdown-title" title={c.title}>{c.title.length > 40 ? c.title.substring(0, 37) + "…" : c.title}</span>
+                                            <div className="probe-breakdown-bars">
+                                              <div className="probe-breakdown-row">
+                                                <span>Lexical</span>
+                                                <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-lexical" style={{ width: `${maxScore ? (c.lexical_score / maxScore) * 100 : 0}%` }}></div></div>
+                                                <span>{c.lexical_score.toFixed(1)}</span>
+                                              </div>
+                                              <div className="probe-breakdown-row">
+                                                <span>Semantic</span>
+                                                <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-semantic" style={{ width: `${maxScore ? (c.semantic_score / maxScore) * 100 : 0}%`, background: "linear-gradient(90deg, #8b5cf6, #a78bfa)" }}></div></div>
+                                                <span>{c.semantic_score.toFixed(1)}</span>
+                                              </div>
+                                              <div className="probe-breakdown-row">
+                                                <span>Evidence</span>
+                                                <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-evidence" style={{ width: `${maxScore ? (c.evidence_score / maxScore) * 100 : 0}%` }}></div></div>
+                                                <span>{c.evidence_score.toFixed(1)}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </details>
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+            </section>
+          </div>
         );
 
       case "runs":
@@ -406,7 +667,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                 <div className="panel-heading"><div><p className="eyebrow">Consumer outcomes</p><h2>Questionnaire construct means</h2></div></div>
                 <div className="construct-list">
                   {dashboard && Object.entries(dashboard.survey_means).length > 0
-                    ? Object.entries(dashboard.survey_means).map(([name, value]) => <div key={name}><span>{constructLabels[name] || titleCase(name)}</span><strong>{formatNumber(value, 2)} <small>/ 7</small></strong></div>)
+                    ? Object.entries(dashboard.survey_means).map(([name, value]) => <div key={name}><span>{constructLabels[name] || titleCase(name)}</span><strong>{formatNumber(value, 2)} <small>/ 5</small></strong></div>)
                     : <p className="muted">{loading ? "Loading questionnaire data…" : "No completed questionnaires yet."}</p>}
                 </div>
               </section>
@@ -421,7 +682,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
               <div>
                 <p className="eyebrow">Researcher setup</p>
                 <h2>Append a product catalog</h2>
-                <p>Required CSV columns: <code>title</code>, <code>category</code>. Recommended: <code>pair_id</code>, <code>price</code>, <code>description</code>, <code>key_features</code>, <code>rating</code>, <code>review_count</code>, <code>availability</code>, <code>shipping</code>, and <code>return_policy</code>.</p>
+                <p>Required CSV columns: <code>name</code>, <code>main_category</code>, <code>sub_category</code>, <code>image</code>, <code>link</code>, <code>ratings</code>, <code>no_of_ratings</code>, <code>discount_price</code>, and <code>actual_price</code>.</p>
               </div>
               <div className="import-controls">
                 <input type="file" accept=".csv,text/csv" onChange={changeCsv} />
@@ -439,244 +700,37 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
 
             <section className="panel product-register">
               <div className="panel-heading"><div><p className="eyebrow">Audit trail</p><h2>Product register</h2></div></div>
-              <div className="table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Condition</th><th>Pair ID</th><th>Citations / opportunities</th></tr></thead><tbody>
-                {products.length ? products.map((product) => <tr key={product.id}><td><strong>{product.title}</strong></td><td>{product.category}</td><td><ConditionChip value={product.condition} /></td><td>{product.pair_id || "—"}</td><td>{formatNumber(product.citations)} / {formatNumber(product.opportunities)}</td></tr>) : <tr><td colSpan={5} className="empty-cell">{loading ? "Loading product register…" : "No products found."}</td></tr>}
+              <div className="table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Condition</th><th>Price</th><th>Rating</th><th>Citations / Opps</th></tr></thead><tbody>
+                {products.length ? products.map((product) => (
+                   <tr key={product.id}>
+                     <td>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                         {product.image_url && <img src={product.image_url} alt="" style={{ width: 32, height: 32, objectFit: 'contain' }} />}
+                         <div style={{ display: 'flex', flexDirection: 'column' }}>
+                           <strong style={{ fontSize: '0.85rem' }}>{product.title.length > 50 ? product.title.slice(0, 50) + "..." : product.title}</strong>
+                           <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{product.sku || product.id}</span>
+                         </div>
+                       </div>
+                     </td>
+                     <td>{product.category}</td>
+                     <td><ConditionChip value={product.condition} /></td>
+                     <td>{product.price ? `${product.price} ${product.currency}` : "—"}</td>
+                     <td>{product.rating ? `${product.rating} ★ (${product.review_count})` : "—"}</td>
+                     <td>{formatNumber(product.citations)} / {formatNumber(product.opportunities)}</td>
+                   </tr>
+                )) : <tr><td colSpan={6} className="empty-cell">{loading ? "Loading product register…" : "No products found."}</td></tr>}
               </tbody></table></div>
-            </section>
-          </>
-        );
-
-      case "probes":
-        return (
-          <section className="panel probe-panel researcher-probe-panel">
-            <div>
-              <p className="eyebrow">Controlled evaluation mode</p>
-              <h2>Run a preregistered probe</h2>
-              <p>Run a fixed shopping query against the controlled catalog without participant data. Record each paraphrase and replication as a separate probe set. This supports retrieval, rank, and citation testing; it does not replace external-engine replication.</p>
-            </div>
-            <form className="probe-controls" onSubmit={submitProbe}>
-              <label>Probe query<input required maxLength={500} value={probe.query} onChange={(event) => setProbe({ ...probe, query: event.target.value })} placeholder="e.g., Compare 750 ml insulated bottles for commuting" /></label>
-              <div className="probe-row">
-                <label>Probe set<input maxLength={80} value={probe.probeSet} onChange={(event) => setProbe({ ...probe, probeSet: event.target.value })} /></label>
-                <label>Repetitions<input type="number" min={1} max={10} value={probe.repetitions} onChange={(event) => setProbe({ ...probe, repetitions: Number(event.target.value) || 1 })} /></label>
-              </div>
-              <label>Category filter<select value={probe.category} onChange={(event) => setProbe({ ...probe, category: event.target.value })}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-              <details className="advanced-probe-options"><summary>Record engine and model metadata</summary><label>Engine name<input maxLength={120} value={probe.engineName} onChange={(event) => setProbe({ ...probe, engineName: event.target.value })} /></label><label>Model version<input maxLength={120} value={probe.modelVersion} onChange={(event) => setProbe({ ...probe, modelVersion: event.target.value })} /></label><label>Locale<input maxLength={60} value={probe.locale} onChange={(event) => setProbe({ ...probe, locale: event.target.value })} placeholder="e.g., en-IN" /></label></details>
-              <button className="primary-button" type="submit" disabled={runningProbe}>{runningProbe ? "Running…" : "Run controlled probe"}</button>
-              {probeError && <p className="form-error" role="alert">{probeError}</p>}
-            </form>
-            {probeResult && (
-              <div className="probe-result probe-analytics-dashboard" style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
-                  {(() => {
-                    // ── Aggregate stats ──
-                    let geoCount = 0;
-                    let controlCount = 0;
-                    let otherCount = 0;
-                    const geoProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
-                    const controlProducts: Map<string, { title: string; ranks: number[]; scores: number[]; citedCount: number; category: string }> = new Map();
-                    const geoRanks: number[] = [];
-                    const controlRanks: number[] = [];
-
-                    probeResult.runs.forEach(run => {
-                      (run.cited_conditions || []).forEach(condition => {
-                        if (condition === "GEO_OPTIMIZED") geoCount++;
-                        else if (condition === "CONTROL") controlCount++;
-                        else otherCount++;
-                      });
-                      (run.candidates || []).forEach(c => {
-                        const bucket = c.condition === "GEO_OPTIMIZED" ? geoProducts : controlProducts;
-                        const existing = bucket.get(c.product_id) || { title: c.title, ranks: [], scores: [], citedCount: 0, category: c.category };
-                        existing.ranks.push(c.rank_position);
-                        existing.scores.push(c.retrieval_score);
-                        if (c.cited) existing.citedCount++;
-                        bucket.set(c.product_id, existing);
-                        if (c.cited) {
-                          if (c.condition === "GEO_OPTIMIZED") geoRanks.push(c.rank_position);
-                          else if (c.condition === "CONTROL") controlRanks.push(c.rank_position);
-                        }
-                      });
-                    });
-
-                    const totalCitations = geoCount + controlCount + otherCount;
-                    const geoPct = totalCitations ? Math.round((geoCount / totalCitations) * 100) : 0;
-                    const controlPct = totalCitations ? Math.round((controlCount / totalCitations) * 100) : 0;
-                    const avgGeoRank = geoRanks.length ? (geoRanks.reduce((a, b) => a + b, 0) / geoRanks.length) : null;
-                    const avgControlRank = controlRanks.length ? (controlRanks.reduce((a, b) => a + b, 0) / controlRanks.length) : null;
-
-                    const maxScore = Math.max(
-                      ...probeResult.runs.flatMap(r => (r.candidates || []).map(c => c.retrieval_score)),
-                      1
-                    );
-
-                    return (
-                      <>
-                        {/* ── Section 1: Summary header ── */}
-                        <div className="probe-summary-header">
-                          <h3>Probe Analysis Report</h3>
-                          <p className="probe-meta">{probeResult.runs.length} run(s) · Query: <em>"{probeResult.query}"</em></p>
-                        </div>
-
-                        {/* ── Section 2: Key metrics cards ── */}
-                        <div className="probe-metrics-row">
-                          <div className="probe-metric-card probe-metric-geo">
-                            <span className="probe-metric-label">GEO Optimized Citations</span>
-                            <strong className="probe-metric-value">{geoCount}</strong>
-                            <span className="probe-metric-pct">{geoPct}%</span>
-                          </div>
-                          <div className="probe-metric-card probe-metric-control">
-                            <span className="probe-metric-label">Control Citations</span>
-                            <strong className="probe-metric-value">{controlCount}</strong>
-                            <span className="probe-metric-pct">{controlPct}%</span>
-                          </div>
-                          <div className="probe-metric-card">
-                            <span className="probe-metric-label">Avg GEO Rank</span>
-                            <strong className="probe-metric-value">{avgGeoRank !== null ? `#${avgGeoRank.toFixed(1)}` : "—"}</strong>
-                          </div>
-                          <div className="probe-metric-card">
-                            <span className="probe-metric-label">Avg Control Rank</span>
-                            <strong className="probe-metric-value">{avgControlRank !== null ? `#${avgControlRank.toFixed(1)}` : "—"}</strong>
-                          </div>
-                        </div>
-
-                        {/* ── Section 3: Citation split bar ── */}
-                        {totalCitations > 0 && (
-                          <div className="probe-section">
-                            <h4>Citation Split</h4>
-                            <p className="probe-explanation">
-                              When the AI answered your question, it recommended products to the user. This chart shows the proportion of those recommendations that came from your optimized products vs the untouched control products.
-                              {geoPct > controlPct
-                                ? " Your optimization strategy is working — the AI is preferring your optimized products."
-                                : geoPct < controlPct
-                                ? " The control group is being cited more often. Consider adjusting your optimization strategy."
-                                : " The two groups are performing equally."}
-                            </p>
-                            <div className="probe-split-bar">
-                              {geoCount > 0 && <div className="probe-split-geo" style={{ width: `${(geoCount / totalCitations) * 100}%` }}>{geoPct}% GEO</div>}
-                              {controlCount > 0 && <div className="probe-split-control" style={{ width: `${(controlCount / totalCitations) * 100}%` }}>{controlPct}% Control</div>}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ── Section 4: Average rank comparison ── */}
-                        {(avgGeoRank !== null || avgControlRank !== null) && (
-                          <div className="probe-section">
-                            <h4>Average Rank When Cited</h4>
-                            <p className="probe-explanation">
-                              A lower rank number means the product appeared higher (closer to #1) in the AI's response. Think of it like a race — position #1 is the winner.
-                            </p>
-                            <div className="probe-rank-bars">
-                              {avgGeoRank !== null && (
-                                <div className="probe-rank-row">
-                                  <span className="probe-rank-label">GEO Optimized</span>
-                                  <div className="probe-rank-track">
-                                    <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min((avgGeoRank / 10) * 100, 100)}%` }}>
-                                      #{avgGeoRank.toFixed(1)}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                              {avgControlRank !== null && (
-                                <div className="probe-rank-row">
-                                  <span className="probe-rank-label">Control</span>
-                                  <div className="probe-rank-track">
-                                    <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min((avgControlRank / 10) * 100, 100)}%` }}>
-                                      #{avgControlRank.toFixed(1)}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* ── Section 5: Per-run breakdown ── */}
-                        {probeResult.runs.map((run) => (
-                          <details key={run.probe_run_id} className="probe-run-detail" open={probeResult.runs.length <= 3}>
-                            <summary className="probe-run-summary">
-                              <span>Run {run.repetition}</span>
-                              <span className="probe-run-cited-count">{run.cited_products.length} product(s) cited</span>
-                            </summary>
-                            <div className="probe-run-body">
-                              {/* AI Answer */}
-                              {run.answer && (
-                                <div className="probe-ai-answer">
-                                  <h5>AI's Answer</h5>
-                                  <p>{run.answer}</p>
-                                </div>
-                              )}
-
-                              {/* Candidate ranking table */}
-                              {run.candidates && run.candidates.length > 0 && (
-                                <div className="probe-candidates-section">
-                                  <h5>Product Ranking</h5>
-                                  <p className="probe-explanation">
-                                    These are the top products the AI considered, ordered by their relevance score. Products highlighted in <strong style={{ color: "var(--color-primary)" }}>green</strong> are GEO optimized; <strong style={{ color: "#6b7280" }}>gray</strong> ones are control. A "Yes" means the AI actually cited (recommended) that product in its answer.
-                                  </p>
-                                  <div className="probe-candidates-table">
-                                    <div className="probe-candidate-header">
-                                      <span className="probe-col-rank">#</span>
-                                      <span className="probe-col-product">Product</span>
-                                      <span className="probe-col-condition">Group</span>
-                                      <span className="probe-col-score">Relevance Score</span>
-                                      <span className="probe-col-cited">Cited?</span>
-                                    </div>
-                                    {run.candidates.map((c) => (
-                                      <div key={`${run.probe_run_id}-${c.product_id}`} className={`probe-candidate-row ${c.condition === "GEO_OPTIMIZED" ? "probe-row-geo" : "probe-row-control"} ${c.cited ? "probe-row-cited" : ""}`}>
-                                        <span className="probe-col-rank">{c.rank_position}</span>
-                                        <span className="probe-col-product" title={c.title}>{c.title.length > 60 ? c.title.substring(0, 57) + "…" : c.title}</span>
-                                        <span className={`probe-col-condition probe-condition-chip ${c.condition === "GEO_OPTIMIZED" ? "chip-geo" : "chip-control"}`}>
-                                          {c.condition === "GEO_OPTIMIZED" ? "GEO" : "Control"}
-                                        </span>
-                                        <span className="probe-col-score">
-                                          <span className="probe-score-bar-track">
-                                            <span className={`probe-score-bar-fill ${c.condition === "GEO_OPTIMIZED" ? "fill-geo" : "fill-control"}`} style={{ width: `${(c.retrieval_score / maxScore) * 100}%` }}></span>
-                                          </span>
-                                          <span className="probe-score-num">{c.retrieval_score.toFixed(1)}</span>
-                                        </span>
-                                        <span className="probe-col-cited">{c.cited ? "Yes" : "—"}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-
-                                  {/* Score breakdown mini-chart */}
-                                  <details className="probe-score-breakdown">
-                                    <summary>View detailed score breakdown</summary>
-                                    <div className="probe-breakdown-grid">
-                                      {run.candidates.filter(c => c.cited).map(c => (
-                                        <div key={`breakdown-${run.probe_run_id}-${c.product_id}`} className="probe-breakdown-item">
-                                          <span className="probe-breakdown-title" title={c.title}>{c.title.length > 40 ? c.title.substring(0, 37) + "…" : c.title}</span>
-                                          <div className="probe-breakdown-bars">
-                                            <div className="probe-breakdown-row">
-                                              <span>Lexical</span>
-                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-lexical" style={{ width: `${maxScore ? (c.lexical_score / maxScore) * 100 : 0}%` }}></div></div>
-                                              <span>{c.lexical_score.toFixed(1)}</span>
-                                            </div>
-                                            <div className="probe-breakdown-row">
-                                              <span>Semantic</span>
-                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-semantic" style={{ width: `${maxScore ? (c.semantic_score / maxScore) * 100 : 0}%`, background: "linear-gradient(90deg, #8b5cf6, #a78bfa)" }}></div></div>
-                                              <span>{c.semantic_score.toFixed(1)}</span>
-                                            </div>
-                                            <div className="probe-breakdown-row">
-                                              <span>Evidence</span>
-                                              <div className="probe-breakdown-track"><div className="probe-breakdown-fill fill-evidence" style={{ width: `${maxScore ? (c.evidence_score / maxScore) * 100 : 0}%` }}></div></div>
-                                              <span>{c.evidence_score.toFixed(1)}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </details>
-                                </div>
-                              )}
-                            </div>
-                          </details>
-                        ))}
-                      </>
-                    );
-                  })()}
+              {totalProducts > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Showing {productPage * PRODUCTS_PER_PAGE + 1} to {Math.min((productPage + 1) * PRODUCTS_PER_PAGE, totalProducts)} of {formatNumber(totalProducts)} products</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button type="button" onClick={() => setProductPage(Math.max(0, productPage - 1))} disabled={productPage === 0} className="secondary-button" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', minWidth: 'auto' }}>Prev</button>
+                    <button type="button" onClick={() => setProductPage(productPage + 1)} disabled={(productPage + 1) * PRODUCTS_PER_PAGE >= totalProducts} className="secondary-button" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', minWidth: 'auto' }}>Next</button>
+                  </div>
                 </div>
               )}
-          </section>
+            </section>
+          </>
         );
 
       case "exports":
@@ -756,7 +810,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
 
         {!sidebarCollapsed && (
           <div className="researcher-sidebar-footer">
-            <button className="researcher-sidebar-refresh" type="button" onClick={() => void refresh()} disabled={loading}>
+            <button className="researcher-sidebar-refresh" type="button" onClick={() => { void refreshDashboard(); void fetchProducts(); }} disabled={loading}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -783,7 +837,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
             <h1>{activeTabDef.label}</h1>
           </div>
           {activeTab !== "experiment" && (
-            <button className="secondary-button" type="button" onClick={() => void refresh()} disabled={loading}>
+            <button className="secondary-button" type="button" onClick={() => { void refreshDashboard(); void fetchProducts(); }} disabled={loading}>
               {loading ? "Refreshing…" : "Refresh metrics"}
             </button>
           )}

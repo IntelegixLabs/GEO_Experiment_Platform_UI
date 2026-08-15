@@ -65,6 +65,7 @@ function jsonBody(payload: unknown): RequestInit {
 }
 
 export const api = {
+  post: <T = any>(path: string, body: unknown) => request<T>(path, jsonBody(body)),
   adminVerify: (credentials: { username: string; password: string }) => request<{ success: boolean }>("/verify", jsonBody(credentials)),
   getConfig: () => request<StudyConfig>("/config"),
   getProducts: ({ category, limit, offset }: CatalogRequest = {}) => {
@@ -75,7 +76,8 @@ export const api = {
     const query = params.size ? `?${params.toString()}` : "";
     return request<CatalogPage>(`/products${query}`);
   },
-  getResearchProducts: () => request<{ products: Product[] }>("/research/products"),
+  getResearchProducts: (limit = 10, offset = 0) => 
+    request<{ products: Product[], total: number, limit: number, offset: number }>(`/research/products?limit=${limit}&offset=${offset}`),
   getDashboard: () => request<DashboardData>("/dashboard"),
   getAnalyticsReport: (respondentLimit = 100, respondentOffset = 0) =>
     request<AnalyticsReport>(

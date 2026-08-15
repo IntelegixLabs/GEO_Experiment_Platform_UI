@@ -717,14 +717,14 @@ export function ParticipantExperience({
                               }}>
                                 {citation.product.image_url && (
                                   <div style={{ height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', background: '#f8fafc', borderRadius: '4px' }} onClick={() => {
-                                    record("citation_interaction", citation.product.id, { source: "citation_image" }, message.queryId);
+                                    record("citation_open", citation.product.id, { source: "citation_image" }, message.queryId);
                                     setChatInlineProduct({ product: citation.product, messageId: message.id as string });
                                   }}>
                                     <img src={citation.product.image_url} alt="" loading="lazy" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} onError={(event) => { event.currentTarget.hidden = true; }} />
                                   </div>
                                 )}
                                 <div style={{ fontSize: '0.85rem', fontWeight: '600', lineHeight: '1.3', flexGrow: 1, cursor: 'pointer' }} onClick={() => {
-                                    record("citation_interaction", citation.product.id, { source: "citation_title" }, message.queryId);
+                                    record("citation_open", citation.product.id, { source: "citation_title" }, message.queryId);
                                     setChatInlineProduct({ product: citation.product, messageId: message.id as string });
                                 }}>
                                   <span style={{ color: '#0ea5e9', marginRight: '4px' }}>[C{index + 1}]</span>
@@ -734,7 +734,7 @@ export function ParticipantExperience({
                                   <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{formatPrice(citation.product)}</span>
                                   <div style={{ display: 'flex', gap: '6px' }}>
                                     <button onClick={() => {
-                                        record("citation_interaction", citation.product.id, { source: "citation_view" }, message.queryId);
+                                        record("citation_open", citation.product.id, { source: "citation_view" }, message.queryId);
                                         setChatInlineProduct({ product: citation.product, messageId: message.id as string });
                                       }} style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', color: '#334155' }}>View</button>
                                     <a href={citation.product.source_url} target="_blank" rel="noopener noreferrer" onClick={() => {

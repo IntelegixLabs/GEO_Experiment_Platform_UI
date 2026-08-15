@@ -2,6 +2,72 @@ import { useState, useEffect } from "react";
 import { api } from "../api/client";
 import { Product } from "../types";
 
+const extractRating = (ratingStr: any) => {
+  if (!ratingStr || ratingStr === 'Not supplied' || ratingStr.includes('No rating')) return null;
+  const match = String(ratingStr).match(/Rated ([\d.]+)/);
+  return match ? match[1] : null;
+};
+const extractReviews = (ratingStr: any) => {
+  if (!ratingStr || ratingStr === 'Not supplied' || ratingStr.includes('No rating')) return null;
+  const match = String(ratingStr).match(/from ([\d,]+)/);
+  return match ? match[1] : null;
+};
+
+const renderThesisTable = (p: any, bundle: any) => {
+  const bSpec = bundle.specifications || {};
+  const rows = [
+    { dim: "Product description", nonGeo: p.description && p.description !== 'N/A' ? p.description : p.title, geo: bundle.summary || "Factual product summary with key product information" },
+    { dim: "Product identity", nonGeo: p.title, geo: bSpec.Name || "Clearly represented as a distinct product entity" },
+    { dim: "Product features", nonGeo: p.key_features && p.key_features.length > 0 ? p.key_features.join(', ') : "Features appear as part of a long title", geo: bundle.claim_blocks ? bundle.claim_blocks.map((c: any) => c.claim).join('; ') : "Features are explicitly listed and structured" },
+    { dim: "Brand", nonGeo: p.brand && p.brand !== 'Not supplied' ? p.brand : "Not separately specified", geo: bSpec.Brand && bSpec.Brand !== 'Not supplied' ? bSpec.Brand : "Dedicated brand field" },
+    { dim: "Category", nonGeo: p.category && p.category !== 'Not supplied' ? p.category : "Not specified", geo: bSpec.Category && bSpec.Category !== 'Not supplied' ? bSpec.Category : "Explicit category field" },
+    { dim: "Availability", nonGeo: p.availability && p.availability !== 'Not supplied' ? p.availability : "Not provided", geo: bSpec.Availability && bSpec.Availability !== 'Not supplied' ? bSpec.Availability : "Explicit status field" },
+    { dim: "Price", nonGeo: p.price ? `${p.currency || '₹'}${p.price}` : "Not provided", geo: bSpec['Listed price'] && bSpec['Listed price'] !== 'Not supplied' && bSpec['Listed price'] !== 'See current offer' ? bSpec['Listed price'] : "Dedicated price field" },
+    { dim: "Product rating", nonGeo: p.rating ? `${p.rating}/5` : "Not provided", geo: extractRating(bSpec['Rating evidence']) ? `${extractRating(bSpec['Rating evidence'])}/5` : "Dedicated rating field" },
+    { dim: "Review volume", nonGeo: p.review_count ? `${p.review_count} reviews` : "Not provided", geo: extractReviews(bSpec['Rating evidence']) ? `${extractReviews(bSpec['Rating evidence'])} reviews` : "Dedicated review volume field" },
+    { dim: "Returns Information", nonGeo: p.return_policy && p.return_policy !== 'Not supplied' ? p.return_policy : "Not provided", geo: bSpec.Returns && bSpec.Returns !== 'Not supplied' ? bSpec.Returns : "Dedicated returns field" },
+    { dim: "Shipping Information", nonGeo: p.shipping && p.shipping !== 'Not supplied' ? p.shipping : "Not provided", geo: bSpec.Shipping && bSpec.Shipping !== 'Not supplied' ? bSpec.Shipping : "Dedicated shipping field" },
+    { dim: "Product attributes", nonGeo: "Unstructured in title", geo: bSpec && Object.keys(bSpec).length > 0 ? Object.keys(bSpec).join(', ') : "Structured attributes/specifications" },
+    { dim: "Factual information", nonGeo: "Very limited", geo: bundle.faq && bundle.faq.length > 0 ? bundle.faq.map((f: any) => `Q: ${f.question}`).join(' | ') : "Multiple explicit factual claims" },
+    { dim: "Numerical information", nonGeo: p.price || p.rating ? `Price: ${p.price || 'N/A'}, Rating: ${p.rating || 'N/A'}` : "None", geo: `Price: ${bSpec['Listed price'] || 'N/A'}, Rating: ${extractRating(bSpec['Rating evidence']) || 'N/A'}, Reviews: ${extractReviews(bSpec['Rating evidence']) || 'N/A'}` },
+    { dim: "Evidence for claims", nonGeo: "No evidence linkage", geo: bundle.claim_blocks && bundle.claim_blocks.length > 0 ? bundle.claim_blocks.map((c: any) => c.evidence).join(' | ') : "Each major claim is linked to an evidence/source field" },
+    { dim: "Claim verification", nonGeo: "Not apparent", geo: bundle.claim_blocks && bundle.claim_blocks.length > 0 ? bundle.claim_blocks.map((c: any) => c.source_fields?.join(', ') || 'N/A').join(' | ') : "Explicit claim-evidence mapping" },
+    { dim: "Machine readability", nonGeo: "Relatively low", geo: "High, because information is organized into fields" },
+    { dim: "Information retrievability", nonGeo: "Requires interpreting the title", geo: "Individual facts can be directly retrieved" },
+    { dim: "Answerability for AI", nonGeo: "Limited", geo: "High; supports direct question-answering" },
+    { dim: "Entity completeness", nonGeo: "Product name/features only", geo: "Product + category + features + offer + rating + reviews + availability" },
+    { dim: "Structured data richness", nonGeo: "Low", geo: "High" },
+    { dim: "Source transparency", nonGeo: "Not indicated", geo: "Evidence/source for product claims is indicated" },
+    { dim: "GEO orientation", nonGeo: "Primarily human-readable listing", geo: "Designed to be both human- and AI-readable" },
+  ];
+
+  return (
+    <div style={{ marginTop: "24px" }}>
+      <h4 style={{ margin: "0 0 10px", fontSize: "0.85rem", color: "#126166", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        Comparison Table
+      </h4>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", border: "1px solid #c6dada", background: "#fff" }}>
+        <thead style={{ background: "#f0faf8" }}>
+          <tr>
+            <th style={{ padding: "8px", border: "1px solid #c6dada", textAlign: "left" }}>Dimension</th>
+            <th style={{ padding: "8px", border: "1px solid #c6dada", textAlign: "left" }}>Non-GEO Content</th>
+            <th style={{ padding: "8px", border: "1px solid #c6dada", textAlign: "left" }}>GEO-Optimised Content</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              <td style={{ padding: "6px 8px", border: "1px solid #c6dada", fontWeight: 600, color: "#163b43" }}>{row.dim}</td>
+              <td style={{ padding: "6px 8px", border: "1px solid #c6dada", color: "#5e757a" }}>{row.nonGeo}</td>
+              <td style={{ padding: "6px 8px", border: "1px solid #c6dada", color: "#163b43" }}>{row.geo}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 export function ExperimentRunsPanel() {
   const [runs, setRuns] = useState<any[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -412,6 +478,66 @@ export function ExperimentRunsPanel() {
                                       <strong>Brand:</strong> {p.brand}
                                     </div>
                                   )}
+                                  {p.category && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Category:</strong> {p.category}
+                                    </div>
+                                  )}
+                                  {p.main_category && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Main Category:</strong> {p.main_category}
+                                    </div>
+                                  )}
+                                  {p.sub_category && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Sub Category:</strong> {p.sub_category}
+                                    </div>
+                                  )}
+                                  {p.price !== undefined && p.price !== null && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Listed price:</strong> {p.currency || '₹'}{p.price}
+                                    </div>
+                                  )}
+                                  {p.actual_price !== undefined && p.actual_price !== null && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Actual Price:</strong> {p.currency || '₹'}{p.actual_price}
+                                    </div>
+                                  )}
+                                  {p.discount_price !== undefined && p.discount_price !== null && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Discount Price:</strong> {p.currency || '₹'}{p.discount_price}
+                                    </div>
+                                  )}
+                                  {p.rating !== undefined && p.rating !== null && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Rating:</strong> Rated {p.rating}/5 from {p.review_count || 0} reviews
+                                    </div>
+                                  )}
+                                  {p.availability && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Availability:</strong> {p.availability}
+                                    </div>
+                                  )}
+                                  {p.shipping && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Shipping:</strong> {p.shipping}
+                                    </div>
+                                  )}
+                                  {p.return_policy && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Returns:</strong> {p.return_policy}
+                                    </div>
+                                  )}
+                                  {p.image_url && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Image:</strong> <a href={p.image_url} target="_blank" rel="noopener noreferrer" style={{ color: "#126166", wordBreak: "break-all" }}>{p.image_url}</a>
+                                    </div>
+                                  )}
+                                  {p.source_url && (
+                                    <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                      <strong>Link:</strong> <a href={p.source_url} target="_blank" rel="noopener noreferrer" style={{ color: "#126166", wordBreak: "break-all" }}>{p.source_url}</a>
+                                    </div>
+                                  )}
                                   <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
                                     <strong>Description:</strong> {p.description || "N/A"}
                                   </div>
@@ -461,7 +587,7 @@ export function ExperimentRunsPanel() {
                                         </div>
                                       )}
                                       {bundle.claim_blocks && bundle.claim_blocks.length > 0 && (
-                                        <div>
+                                        <div style={{ marginBottom: "10px" }}>
                                           <strong style={{ fontSize: "0.85rem", color: "#126166" }}>Claim-Evidence Links:</strong>
                                           <ul style={{ margin: "6px 0 0", paddingLeft: "18px", fontSize: "0.8rem", color: "#126166" }}>
                                             {bundle.claim_blocks.map((block: any, i: number) => (
@@ -472,17 +598,114 @@ export function ExperimentRunsPanel() {
                                           </ul>
                                         </div>
                                       )}
+                                      {bundle.faq && bundle.faq.length > 0 && (
+                                        <div>
+                                          <strong style={{ fontSize: "0.85rem", color: "#126166" }}>Factual FAQ:</strong>
+                                          <ul style={{ margin: "6px 0 0", paddingLeft: "18px", fontSize: "0.8rem", color: "#126166" }}>
+                                            {bundle.faq.map((faq: any, i: number) => (
+                                              <li key={i} style={{ marginBottom: "4px" }}>
+                                                <strong>Q: {faq.question}</strong>
+                                                <div style={{ color: "#5e757a", marginTop: "2px" }}>A: {faq.answer}</div>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
                                       <div style={{ marginTop: "12px", fontSize: "0.75rem", color: "#126166" }}>
                                         <em>Stored in geo_optimized_products (run: {bundle.run_id || selectedRun.run_id})</em>
                                       </div>
                                     </div>
                                   ) : (
-                                    <p style={{ fontSize: "0.85rem", color: "#5e757a", margin: 0 }}>
-                                      This product was assigned to the control condition. Its canonical catalog record was presented to participants and vector retrieval without GEO modification.
-                                    </p>
+                                    <div>
+                                      <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                        <strong>Title:</strong> {p.title}
+                                      </div>
+                                      {p.brand && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Brand:</strong> {p.brand}
+                                        </div>
+                                      )}
+                                      {p.category && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Category:</strong> {p.category}
+                                        </div>
+                                      )}
+                                      {p.main_category && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Main Category:</strong> {p.main_category}
+                                        </div>
+                                      )}
+                                      {p.sub_category && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Sub Category:</strong> {p.sub_category}
+                                        </div>
+                                      )}
+                                      {p.price !== undefined && p.price !== null && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Listed price:</strong> {p.currency || '₹'}{p.price}
+                                        </div>
+                                      )}
+                                      {p.actual_price !== undefined && p.actual_price !== null && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Actual Price:</strong> {p.currency || '₹'}{p.actual_price}
+                                        </div>
+                                      )}
+                                      {p.discount_price !== undefined && p.discount_price !== null && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Discount Price:</strong> {p.currency || '₹'}{p.discount_price}
+                                        </div>
+                                      )}
+                                      {p.rating !== undefined && p.rating !== null && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Rating:</strong> Rated {p.rating}/5 from {p.review_count || 0} reviews
+                                        </div>
+                                      )}
+                                      {p.availability && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Availability:</strong> {p.availability}
+                                        </div>
+                                      )}
+                                      {p.shipping && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Shipping:</strong> {p.shipping}
+                                        </div>
+                                      )}
+                                      {p.return_policy && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Returns:</strong> {p.return_policy}
+                                        </div>
+                                      )}
+                                      {p.image_url && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Image:</strong> <a href={p.image_url} target="_blank" rel="noopener noreferrer" style={{ color: "#126166", wordBreak: "break-all" }}>{p.image_url}</a>
+                                        </div>
+                                      )}
+                                      {p.source_url && (
+                                        <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                          <strong>Link:</strong> <a href={p.source_url} target="_blank" rel="noopener noreferrer" style={{ color: "#126166", wordBreak: "break-all" }}>{p.source_url}</a>
+                                        </div>
+                                      )}
+                                      <div style={{ fontSize: "0.85rem", color: "#163b43", marginBottom: "8px" }}>
+                                        <strong>Description:</strong> {p.description || "N/A"}
+                                      </div>
+                                      {p.key_features && p.key_features.length > 0 && (
+                                        <div>
+                                          <strong style={{ fontSize: "0.85rem", color: "#163b43" }}>Features:</strong>
+                                          <ul style={{ margin: "6px 0 0", paddingLeft: "18px", fontSize: "0.8rem", color: "#5e757a" }}>
+                                            {p.key_features.map((feat, i) => (
+                                              <li key={i}>{feat}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      <div style={{ marginTop: "12px", fontSize: "0.75rem", color: "#5e757a" }}>
+                                        <em>This product was assigned to the control condition. Its canonical catalog record was presented without GEO modification.</em>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
                               </div>
+                              {isGeo && renderThesisTable(p, bundle)}
                             </div>
                           )}
                         </div>

@@ -2,6 +2,7 @@ export type Condition = "CONTROL" | "GEO_OPTIMIZED" | string;
 
 export interface ProductPage {
   description?: string;
+  summary?: string;
   key_features?: string[];
   specifications?: Record<string, string>;
   faq?: Array<{ question: string; answer: string }>;
@@ -16,6 +17,7 @@ export interface Product {
   main_category?: string;
   sub_category?: string;
   brand?: string;
+  summary?: string;
   description?: string;
   key_features?: string[];
   price?: number | string | null;

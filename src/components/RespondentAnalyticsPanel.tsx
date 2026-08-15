@@ -130,11 +130,11 @@ function ExperimentFlowVisual({ svgRef }: { svgRef: React.RefObject<SVGSVGElemen
 
 function RadarChart({ constructs }: { constructs: AnalyticsSurveyConstruct[] }) {
   const chartId = useId();
-  const values = constructs.slice(0, 6);
+  const values = constructs.slice(0, 8);
   const size = 250;
   const center = size / 2;
   const radius = 79;
-  const scaleMaximum = Math.max(7, ...values.map((item) => item.maximum || item.mean || 0));
+  const scaleMaximum = Math.max(5, ...values.map((item) => item.maximum || item.mean || 0));
   const pointFor = (index: number, value: number) => {
     const angle = (Math.PI * 2 * index / Math.max(1, values.length)) - Math.PI / 2;
     const distance = Math.max(0, Math.min(radius, (value / scaleMaximum) * radius));
