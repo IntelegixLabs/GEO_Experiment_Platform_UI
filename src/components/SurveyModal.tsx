@@ -2,24 +2,33 @@ import { useState, type FormEvent } from "react";
 import { Modal } from "./Modal";
 
 const questionnaire = [
-  ["rq1", "The shopping assistant's recommendations were relevant to my needs."],
-  ["rq2", "The recommendations gave enough detail to evaluate products."],
-  ["rq3", "The recommendations appeared accurate based on the product information."],
-  ["sc1", "The linked product references made the recommendation easier to verify."],
-  ["sc2", "I considered the product references credible."],
-  ["sc3", "The source information increased my confidence in the recommendation."],
-  ["tr1", "I felt able to rely on the shopping assistant for product discovery."],
-  ["tr2", "I trusted the assistant to present product information fairly."],
-  ["tr3", "I would trust this type of assistant for a future product search."],
-  ["pu1", "The assistant saved me effort in searching for products."],
-  ["pu2", "The assistant made product comparison easier."],
-  ["pu3", "Using the assistant was useful for making a shopping decision."],
-  ["pr1", "I was concerned that the recommendation could be inaccurate or outdated."],
-  ["pr2", "I was concerned that the assistant could overlook an important product detail."],
-  ["pr3", "I felt there was some risk in relying on the recommendation alone."],
-  ["pi1", "I would consider selecting a product recommended by this assistant."],
-  ["pi2", "I would be willing to learn more about a recommended product."],
-  ["pi3", "The assistant could influence my eventual purchase decision."],
+  ["rq1", "The AI recommendations were accurate."],
+  ["rq2", "The recommended products fitted my requirements."],
+  ["rq3", "The recommendations were helpful for my product decision."],
+  ["rq4", "Overall, the AI provided high-quality recommendations."],
+  ["ra1", "The recommended product matched my requirements."],
+  ["ra2", "The recommendation was relevant to what I was looking for."],
+  ["ra3", "The recommended product suited my preferences."],
+  ["pu1", "The AI recommendation was useful for selecting a product."],
+  ["pu2", "The recommendation helped me make a better product decision."],
+  ["pu3", "The AI made product selection more effective."],
+  ["pu4", "Overall, the AI recommendation was useful to me."],
+  ["tr1", "I consider the AI recommendation reliable."],
+  ["tr2", "I trust the AI to recommend suitable products."],
+  ["tr3", "I feel confident relying on this recommendation."],
+  ["tr4", "I believe the AI acts in my interest when making recommendations."],
+  ["ds1", "I am satisfied with the product decision I was able to make."],
+  ["ds2", "The AI made the product-selection process satisfactory."],
+  ["ds3", "I am satisfied with the outcome of the recommendation process."],
+  ["rs1", "I am satisfied with the AI recommendation."],
+  ["rs2", "The recommendation experience met my expectations."],
+  ["rs3", "Overall, I am satisfied with the AI recommendation."],
+  ["pi1", "I would consider purchasing the recommended product."],
+  ["pi2", "I am likely to purchase the recommended product."],
+  ["pi3", "I would be willing to buy the recommended product."],
+  ["ri1", "I would use an AI recommender again for a future product purchase."],
+  ["ri2", "I would consider using this AI recommendation service again."],
+  ["ri3", "I would rely on AI recommendations in future shopping decisions."],
 ] as const;
 
 interface SurveyModalProps {
@@ -56,15 +65,15 @@ export function SurveyModal({ open, onClose, onSubmit }: SurveyModalProps) {
       <button className="close-button" type="button" onClick={onClose} aria-label="Close questionnaire">×</button>
       <p className="eyebrow">Short questionnaire</p>
       <h2 id="survey-title">Your shopping-assistant experience</h2>
-      <p>For each statement, select 1 (strongly disagree) to 7 (strongly agree). You may leave an item blank.</p>
-      <div className="scale-legend"><span>1 Strongly disagree</span><span>7 Strongly agree</span></div>
+      <p>For each statement, select 1 (strongly disagree) to 5 (strongly agree). You may leave an item blank.</p>
+      <div className="scale-legend"><span>1 Strongly disagree</span><span>5 Strongly agree</span></div>
       <form onSubmit={submit}>
         <div className="survey-questions">
           {questionnaire.map(([name, question], index) => (
             <fieldset className="survey-item" key={name}>
               <legend>{index + 1}. {question}</legend>
               <div className="scale-options">
-                {[1, 2, 3, 4, 5, 6, 7].map((value) => (
+                {[1, 2, 3, 4, 5].map((value) => (
                   <label key={value}>
                     <input
                       type="radio"

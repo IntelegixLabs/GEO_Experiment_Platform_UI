@@ -17,9 +17,30 @@ export function ProductDetailView({
   
   const page = product.product_page;
   const features = page?.key_features?.length ? page.key_features : product.key_features || [];
-  const specifications = Object.entries(page?.specifications || {});
+  
+  let rawSpecs = page?.specifications && Object.keys(page.specifications).length > 0 
+    ? page.specifications 
+    : {
+        "Name": product.title || "Not supplied",
+        "Brand": product.brand || "Not supplied",
+        "Category": product.category || "Not supplied",
+        "Main Category": product.main_category || "Not supplied",
+        "Sub Category": product.sub_category || "Not supplied",
+        "Listed Price": product.price ? `${product.currency || '₹'}${product.price}` : "Not supplied",
+        "Actual Price": product.actual_price ? `${product.currency || '₹'}${product.actual_price}` : "Not supplied",
+        "Discount Price": product.discount_price ? `${product.currency || '₹'}${product.discount_price}` : "Not supplied",
+        "Ratings": product.rating || "Not supplied",
+        "Number of Ratings": product.review_count || "Not supplied",
+        "Availability": product.availability || "Not supplied",
+        "Returns": product.return_policy || "Not supplied",
+        "Shipping": product.shipping || "Not supplied",
+      };
+
+  const specifications = Object.entries(rawSpecs).filter(([k, v]) => !['Image', 'Link', 'Product ID', 'SKU'].includes(k));
   const claims = page?.claim_blocks || [];
   const faq = page?.faq || [];
+  const summary = page?.summary;
+  const displayDescription = summary || page?.description || product.description || "No description provided in the original catalog.";
 
   return (
     <div className="product-detail-view" style={{ 
@@ -52,7 +73,7 @@ export function ProductDetailView({
         <div style={{ 
           background: '#f8fafc', 
           borderRadius: '6px', 
-          height: '180px', 
+          height: '140px', 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
@@ -159,13 +180,13 @@ export function ProductDetailView({
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '35vh', overflowY: 'auto', paddingRight: '0.5rem' }} className="custom-scrollbar">
         
-        {page?.description || product.description ? (
+        {displayDescription ? (
           <div>
-            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.25rem 0', fontWeight: 600 }}>About this item</h3>
-            <p style={{ fontSize: '0.85rem', color: '#334155', lineHeight: 1.5, margin: 0 }}>
-              {page?.description || product.description}
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.25rem 0', fontWeight: 600 }}>{summary ? "Summary" : "About this item"}</h3>
+            <p style={{ fontSize: '0.85rem', color: '#334155', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>
+              {displayDescription}
             </p>
           </div>
         ) : null}
@@ -197,10 +218,24 @@ export function ProductDetailView({
           <div>
             <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.4rem 0', fontWeight: 600 }}>Verified Claims</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
-              {claims.map((claim, index) => (
+              {claims.map((claim: any, index: number) => (
                 <div key={index} style={{ background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
                   <div style={{ fontWeight: 600, color: '#0f766e', fontSize: '0.85rem', marginBottom: '0.15rem', lineHeight: 1.2 }}>{claim.claim}</div>
                   <div style={{ color: '#115e59', fontSize: '0.75rem', lineHeight: 1.3 }}>{claim.evidence}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {faq.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '0.9rem', color: '#0f172a', margin: '0 0 0.4rem 0', fontWeight: 600 }}>Frequently Asked Questions</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {faq.map((item: any, index: number) => (
+                <div key={index} style={{ background: '#f8fafc', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.85rem', marginBottom: '0.2rem' }}>Q: {item.question}</div>
+                  <div style={{ color: '#475569', fontSize: '0.8rem', lineHeight: 1.4 }}>A: {item.answer}</div>
                 </div>
               ))}
             </div>
