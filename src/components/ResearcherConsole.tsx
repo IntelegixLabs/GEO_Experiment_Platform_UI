@@ -6,6 +6,7 @@ import { VectorDbInspectorPanel } from "./VectorDbInspectorPanel";
 import { RespondentAnalyticsPanel } from "./RespondentAnalyticsPanel";
 import { RespondentActivityPanel } from "./RespondentActivityPanel";
 import { AgenticGeoLab } from "./AgenticGeoLab";
+import { Tooltip } from "react-tooltip";
 import type { DashboardData, ProbeResponse, Product } from "../types";
 import { conditionLabel, formatNumber, formatPercent, titleCase } from "../utils/formatters";
 
@@ -74,6 +75,16 @@ function IconProbes() {
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
       <line x1="11" y1="8" x2="11" y2="14" />
       <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+
+function IconInfo() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
     </svg>
   );
 }
@@ -546,15 +557,13 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                   const totalCitations = geoRow.citation_events + controlRow.citation_events;
                   const geoPct = totalCitations ? Math.round((geoRow.citation_events / totalCitations) * 100) : 0;
                   const controlPct = totalCitations ? Math.round((controlRow.citation_events / totalCitations) * 100) : 0;
-                  
-                  // Max limits for scales
-                  const maxOppRate = Math.max(geoRow.citation_rate || 0, controlRow.citation_rate || 0) || 1;
-                  const maxEng = Math.max(geoRow.engagement_per_citation || 0, controlRow.engagement_per_citation || 0) || 1;
-
                   return (
                     <div className="outcomes-dashboard">
                       <div className="probe-section outcomes-section">
-                        <h4>1. Overall Performance (Total Citations)</h4>
+                        <h4>
+                          1. Overall Performance (Total Citations)
+                          <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-1" aria-label="View calculation"><IconInfo /></button>
+                        </h4>
                         <p className="probe-explanation">How often did the AI recommend products from each group?</p>
                         <div className="probe-split-bar">
                           {geoPct > 0 && <div className="probe-split-geo" style={{ width: `${geoPct}%` }}>{geoPct}% GEO ({formatNumber(geoRow.citation_events)})</div>}
@@ -564,13 +573,16 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                       </div>
 
                       <div className="probe-section outcomes-section">
-                        <h4>2. Opportunity Rate (Visibility)</h4>
+                        <h4>
+                          2. Opportunity Rate (Visibility)
+                          <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-2" aria-label="View calculation"><IconInfo /></button>
+                        </h4>
                         <p className="probe-explanation">When a product was relevant to a user's search, how often did the AI actually recommend it?</p>
                         <div className="probe-rank-bars">
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">GEO Optimized</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${((geoRow.citation_rate || 0) / maxOppRate) * 100}%` }}>
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min(100, (geoRow.citation_rate || 0) * 100)}%` }}>
                                 {formatPercent(geoRow.citation_rate)}
                               </div>
                             </div>
@@ -579,7 +591,7 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">Control</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${((controlRow.citation_rate || 0) / maxOppRate) * 100}%` }}>
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min(100, (controlRow.citation_rate || 0) * 100)}%` }}>
                                 {formatPercent(controlRow.citation_rate)}
                               </div>
                             </div>
@@ -589,59 +601,93 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                       </div>
 
                       <div className="probe-section outcomes-section">
-                        <h4>3. User Engagement</h4>
+                        <h4>
+                          3. User Engagement
+                          <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-3" aria-label="View calculation"><IconInfo /></button>
+                        </h4>
                         <p className="probe-explanation">When a product was recommended, how often did users actually interact with it?</p>
                         <div className="probe-rank-bars">
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">GEO Optimized</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${((geoRow.engagement_per_citation || 0) / maxEng) * 100}%` }}>
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min(100, (geoRow.engagement_per_citation || 0) * 100)}%` }}>
                                 {formatNumber(geoRow.engagement_per_citation, 2)} / citation
                               </div>
                             </div>
-                            <span className="outcomes-fraction">({formatNumber(geoRow.engagement_events)} total)</span>
+                            <span className="outcomes-fraction">({formatNumber(geoRow.engagement_events)} / {formatNumber(geoRow.citation_events)})</span>
                           </div>
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">Control</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${((controlRow.engagement_per_citation || 0) / maxEng) * 100}%` }}>
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min(100, (controlRow.engagement_per_citation || 0) * 100)}%` }}>
                                 {formatNumber(controlRow.engagement_per_citation, 2)} / citation
                               </div>
                             </div>
-                            <span className="outcomes-fraction">({formatNumber(controlRow.engagement_events)} total)</span>
+                            <span className="outcomes-fraction">({formatNumber(controlRow.engagement_events)} / {formatNumber(controlRow.citation_events)})</span>
                           </div>
                         </div>
                       </div>
                       
                       <div className="probe-section outcomes-section">
-                        <h4>4. Purchase Intent</h4>
+                        <h4>
+                          4. Purchase Intent
+                          <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-4" aria-label="View calculation"><IconInfo /></button>
+                        </h4>
                         <p className="probe-explanation">When a product was recommended, how often did users click 'Buy on Amazon'?</p>
                         <div className="probe-rank-bars">
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">GEO Optimized</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${maxEng ? ((geoRow.purchases_per_citation || 0) / maxEng) * 100 : 0}%` }}>
+                              <div className="probe-rank-fill probe-rank-geo" style={{ width: `${Math.min(100, (geoRow.purchases_per_citation || 0) * 100)}%` }}>
                                 {formatNumber(geoRow.purchases_per_citation || 0, 2)} / citation
                               </div>
                             </div>
-                            <span className="outcomes-fraction">({formatNumber(geoRow.purchase_events || 0)} total)</span>
+                            <span className="outcomes-fraction">({formatNumber(geoRow.purchase_events || 0)} / {formatNumber(geoRow.citation_events)})</span>
                           </div>
                           <div className="probe-rank-row">
                             <span className="probe-rank-label">Control</span>
                             <div className="probe-rank-track">
-                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${maxEng ? ((controlRow.purchases_per_citation || 0) / maxEng) * 100 : 0}%` }}>
+                              <div className="probe-rank-fill probe-rank-control" style={{ width: `${Math.min(100, (controlRow.purchases_per_citation || 0) * 100)}%` }}>
                                 {formatNumber(controlRow.purchases_per_citation || 0, 2)} / citation
                               </div>
                             </div>
-                            <span className="outcomes-fraction">({formatNumber(controlRow.purchase_events || 0)} total)</span>
+                            <span className="outcomes-fraction">({formatNumber(controlRow.purchase_events || 0)} / {formatNumber(controlRow.citation_events)})</span>
                           </div>
                         </div>
                       </div>
                       
+                      <Tooltip id="calc-tooltip-1" openOnClick={true} globalCloseEvents={{ clickOutsideAnchor: true }} clickable={true} style={{ maxWidth: "300px", zIndex: 100, fontSize: "0.8rem", lineHeight: "1.4" }}>
+                        <strong>Total Citations</strong> = The sum of all citation events for this condition. A citation event occurs when a product is referenced by the AI assistant in an answer to a user query.
+                      </Tooltip>
+                      <Tooltip id="calc-tooltip-2" openOnClick={true} globalCloseEvents={{ clickOutsideAnchor: true }} clickable={true} style={{ maxWidth: "300px", zIndex: 100, fontSize: "0.8rem", lineHeight: "1.4" }}>
+                        <strong>Opportunity Rate</strong> = (Citation Events) / (Candidate Opportunities). 
+                        <br/>Candidate Opportunities = The number of times a product was eligible to be recommended based on the user's search.
+                      </Tooltip>
+                      <Tooltip id="calc-tooltip-3" openOnClick={true} globalCloseEvents={{ clickOutsideAnchor: true }} clickable={true} style={{ maxWidth: "300px", zIndex: 100, fontSize: "0.8rem", lineHeight: "1.4" }}>
+                        <strong>User Engagement</strong> = (Total Interactions) / (Citation Events).
+                        <br/>Interactions include a participant opening the product details panel from a citation.
+                      </Tooltip>
+                      <Tooltip id="calc-tooltip-4" openOnClick={true} globalCloseEvents={{ clickOutsideAnchor: true }} clickable={true} style={{ maxWidth: "300px", zIndex: 100, fontSize: "0.8rem", lineHeight: "1.4" }}>
+                        <strong>Purchase Intent</strong> = (Total 'Buy on Amazon' clicks) / (Citation Events).
+                        <br/>Calculates the rate at which citations convert into simulated purchase actions.
+                      </Tooltip>
+                      <Tooltip id="calc-tooltip-5" openOnClick={true} globalCloseEvents={{ clickOutsideAnchor: true }} clickable={true} style={{ maxWidth: "300px", zIndex: 100, fontSize: "0.8rem", lineHeight: "1.4" }}>
+                        <strong>Mean Score</strong> = The average of all survey construct scores (1-5 scale) across all respondents assigned to this condition.
+                      </Tooltip>
+
                       <div className="table-wrap" style={{ marginTop: "1rem" }}>
                         <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>Raw Data Export</p>
                         <table>
-                          <thead><tr><th>Condition</th><th>Citations</th><th>Opportunity rate</th><th>Mean score</th><th>Reference engagement</th><th>Purchases</th></tr></thead>
+                          <thead>
+                            <tr>
+                              <th>Condition</th>
+                              <th>Citations <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-1" aria-label="View calculation"><IconInfo /></button></th>
+                              <th>Opportunity rate <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-2" aria-label="View calculation"><IconInfo /></button></th>
+                              <th>Mean score <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-5" aria-label="View calculation"><IconInfo /></button></th>
+                              <th>Reference engagement <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-3" aria-label="View calculation"><IconInfo /></button></th>
+                              <th>Purchases <button type="button" className="info-icon-btn" data-tooltip-id="calc-tooltip-4" aria-label="View calculation"><IconInfo /></button></th>
+                            </tr>
+                          </thead>
                           <tbody>
                             {dashboard?.by_condition.length ? dashboard.by_condition.map((row) => (
                               <tr key={row.condition}>
@@ -669,6 +715,59 @@ export function ResearcherConsole({ categories, onCatalogImported, onReturnToCat
                   {dashboard && Object.entries(dashboard.survey_means).length > 0
                     ? Object.entries(dashboard.survey_means).map(([name, value]) => <div key={name}><span>{constructLabels[name] || titleCase(name)}</span><strong>{formatNumber(value, 2)} <small>/ 5</small></strong></div>)
                     : <p className="muted">{loading ? "Loading questionnaire data…" : "No completed questionnaires yet."}</p>}
+                </div>
+              </section>
+
+              <section className="panel" style={{ marginTop: "1rem" }}>
+                <div className="panel-heading"><div><p className="eyebrow">Interaction Analysis</p><h2>Query Sources</h2></div></div>
+                <div className="query-sources-container">
+                  {dashboard && dashboard.query_metrics ? (() => {
+                    const { typed, suggested } = dashboard.query_metrics;
+                    const totalQueries = typed + suggested;
+                    if (totalQueries === 0) {
+                      return <p className="muted" style={{ padding: "1rem" }}>No queries submitted yet.</p>;
+                    }
+                    const typedPct = Math.round((typed / totalQueries) * 100);
+                    const suggestedPct = Math.round((suggested / totalQueries) * 100);
+                    return (
+                      <div className="query-metrics-layout">
+                        <div className="query-pie-chart-wrapper" data-tooltip-id="query-tooltip" data-tooltip-content={`AI Suggested: ${suggestedPct}% | Typed: ${typedPct}%`}>
+                          <svg width="120" height="120" viewBox="0 0 100 100" style={{ transform: "rotate(-90deg)", overflow: "visible" }}>
+                            <circle cx="50" cy="50" r={40} fill="transparent" stroke="#e8eef3" strokeWidth="15" />
+                            {suggestedPct > 0 && <circle cx="50" cy="50" r={40} fill="transparent" stroke="#248d78" strokeWidth="15"
+                              className="donut-segment"
+                              style={{ strokeDasharray: `${(suggestedPct / 100) * 251.2} 251.2`, strokeDashoffset: 0 } as any}
+                            />}
+                            {typedPct > 0 && <circle cx="50" cy="50" r={40} fill="transparent" stroke="#7b8b99" strokeWidth="15" 
+                              className="donut-segment"
+                              style={{ strokeDasharray: `${(typedPct / 100) * 251.2} 251.2`, strokeDashoffset: -((suggestedPct / 100) * 251.2) } as any}
+                            />}
+                          </svg>
+                          <div className="donut-center">
+                            <strong>{formatNumber(totalQueries)}</strong>
+                            <span>Queries</span>
+                          </div>
+                        </div>
+                        <div className="query-metrics-table">
+                          <table>
+                            <thead><tr><th>Source</th><th>Count</th><th>%</th></tr></thead>
+                            <tbody>
+                              <tr>
+                                <td><span className="legend-dot" style={{background: '#248d78'}}></span> AI Suggested</td>
+                                <td>{formatNumber(suggested)}</td>
+                                <td>{suggestedPct}%</td>
+                              </tr>
+                              <tr>
+                                <td><span className="legend-dot" style={{background: '#7b8b99'}}></span> Typed Manually</td>
+                                <td>{formatNumber(typed)}</td>
+                                <td>{typedPct}%</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })() : <p className="muted" style={{ padding: "1rem" }}>{loading ? "Loading query data…" : "No query metrics available."}</p>}
                 </div>
               </section>
             </div>

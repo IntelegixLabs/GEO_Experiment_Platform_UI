@@ -113,6 +113,10 @@ export interface DashboardData {
   by_condition: ConditionMetric[];
   survey_means: Record<string, number>;
   catalogue_balance: Array<{ category: string; condition: Condition; products: number }>;
+  query_metrics: {
+    typed: number;
+    suggested: number;
+  };
   interpretation_note?: string;
 }
 
@@ -348,6 +352,10 @@ export interface AnalyticsReport {
   funnel: AnalyticsFunnelStep[];
   conditions?: AnalyticsConditionMetric[];
   category_effects?: AnalyticsCategoryEffect[];
+  query_metrics?: {
+    typed: number;
+    suggested: number;
+  };
   respondents?: {
     items: AnalyticsRespondent[];
     total: number;
@@ -364,4 +372,5 @@ export type EventType =
   | "citation_interaction"
   | "comparison_add"
   | "purchase_intent"
-  | "survey_open";
+  | "survey_open"
+  | "query_submit";

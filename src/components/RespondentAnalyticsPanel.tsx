@@ -187,7 +187,7 @@ function TimelineChart({ points }: { points: AnalyticsTimelinePoint[] }) {
   const maximum = Math.max(1, ...values);
   const width = 560;
   const height = 186;
-  const left = 22;
+  const left = 36;
   const bottom = 28;
   const innerWidth = width - left - 14;
   const innerHeight = height - bottom - 16;
@@ -204,7 +204,15 @@ function TimelineChart({ points }: { points: AnalyticsTimelinePoint[] }) {
     <div className="analytics-timeline-wrap">
       <svg viewBox={"0 0 " + width + " " + height} role="img" aria-labelledby={chartId}>
         <title id={chartId}>Participant query timeline</title>
-        {[.25, .5, .75, 1].map((fraction) => <line className="analytics-timeline-gridline" x1={left} x2={width - 14} y1={16 + innerHeight - (fraction * innerHeight)} y2={16 + innerHeight - (fraction * innerHeight)} key={fraction} />)}
+        {[0, .25, .5, .75, 1].map((fraction) => {
+          const y = 16 + innerHeight - (fraction * innerHeight);
+          return (
+            <g key={fraction}>
+              {fraction > 0 && <line className="analytics-timeline-gridline" x1={left} x2={width - 14} y1={y} y2={y} />}
+              <text className="analytics-timeline-label" x={left - 8} y={y + 4} textAnchor="end" fill="#7b8a98" fontSize="10">{Math.round(fraction * maximum)}</text>
+            </g>
+          );
+        })}
         <path className="analytics-timeline-area" d={area} />
         <path className="analytics-timeline-line" d={line} />
         {coordinates.map((point, index) => (
@@ -215,7 +223,7 @@ function TimelineChart({ points }: { points: AnalyticsTimelinePoint[] }) {
         ))}
         {points.map((point, index) => {
           if (points.length > 6 && index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) return null;
-          return <text className="analytics-timeline-label" x={coordinates[index].x} y={height - 9} textAnchor="middle" key={point.date + "-label"}>{point.date.slice(5)}</text>;
+          return <text className="analytics-timeline-label" x={coordinates[index].x} y={height - 9} textAnchor="middle" fill="#7b8a98" fontSize="10" key={point.date + "-label"}>{point.date.slice(5)}</text>;
         })}
       </svg>
       <Tooltip id="timeline-tooltip" style={{ backgroundColor: "#163b43", color: "#fff", borderRadius: "4px", padding: "6px 12px", fontSize: "0.85rem", zIndex: 100 }} />
@@ -363,11 +371,11 @@ export function RespondentAnalyticsPanel({ onRefresh }: RespondentAnalyticsPanel
           <div className="analytics-panel-heading"><div><p className="eyebrow">Visibility effect</p><h3 id="analytics-condition-heading">Citation and engagement by condition</h3></div><span>Candidate-level denominator</span></div>
           {conditions.length ? <div className="analytics-condition-bars">{conditions.map((condition) => {
             const citationRate = normalizedRate(condition.citation_rate);
-            const relativeWidth = citationMaximum ? (citationRate / citationMaximum) * 100 : 0;
+            const absoluteWidth = Math.min(100, citationRate);
             return <article key={condition.condition}>
               <div className="analytics-condition-topline"><span className={"condition-chip " + (condition.condition === "GEO_OPTIMIZED" ? "treatment" : "control")}>{conditionLabel(condition.condition)}</span><strong>{formatRate(condition.citation_rate)}</strong></div>
-              <div className="analytics-condition-bar"><i className={condition.condition === "GEO_OPTIMIZED" ? "treatment" : "control"} style={{ width: relativeWidth + "%" }} /></div>
-              <dl><div><dt>Citations</dt><dd>{formatNumber(condition.citation_events)} / {formatNumber(condition.candidate_opportunities)}</dd></div><div><dt>Top 3</dt><dd>{formatRate(condition.top3_rate)}</dd></div><div><dt>Engagement</dt><dd>{formatNumber(condition.engagement_events)}</dd></div></dl>
+              <div className="analytics-condition-bar"><i className={condition.condition === "GEO_OPTIMIZED" ? "treatment" : "control"} style={{ width: absoluteWidth + "%" }} /></div>
+              <dl><div><dt>Citations</dt><dd>{formatNumber(condition.citation_events)} / {formatNumber(condition.candidate_opportunities)}</dd></div><div><dt>Top 3</dt><dd>{formatRate(condition.top3_rate)}</dd></div><div><dt>Engagement</dt><dd>{formatNumber(condition.engagement_events)}</dd></div><div><dt>Purchases</dt><dd>{formatNumber(condition.purchase_intent_events || 0)}</dd></div></dl>
             </article>;
           })}</div> : <div className="analytics-empty-chart">Citation, top-three, and reference-engagement outcomes will appear after participant searches.</div>}
         </section>
@@ -392,6 +400,59 @@ export function RespondentAnalyticsPanel({ onRefresh }: RespondentAnalyticsPanel
         </section>
       </div>
       
+      <section className="panel" aria-labelledby="analytics-query-sources-heading" style={{ marginTop: "1.25rem", marginBottom: "1.25rem" }}>
+        <div className="analytics-panel-heading"><div><p className="eyebrow">Interaction Analysis</p><h3 id="analytics-query-sources-heading">Query Sources</h3></div></div>
+        <div className="query-sources-container">
+          {report?.query_metrics ? (() => {
+            const { typed, suggested } = report.query_metrics;
+            const totalQueries = typed + suggested;
+            if (totalQueries === 0) {
+              return <div className="analytics-empty-chart">No queries submitted yet.</div>;
+            }
+            const typedPct = Math.round((typed / totalQueries) * 100);
+            const suggestedPct = Math.round((suggested / totalQueries) * 100);
+            return (
+              <div className="query-metrics-layout">
+                <div className="query-pie-chart-wrapper" data-tooltip-id="timeline-tooltip" data-tooltip-content={`AI Suggested: ${suggestedPct}% | Typed: ${typedPct}%`}>
+                  <svg width="120" height="120" viewBox="0 0 100 100" style={{ transform: "rotate(-90deg)", overflow: "visible" }}>
+                    <circle cx="50" cy="50" r={40} fill="transparent" stroke="#e8eef3" strokeWidth="15" />
+                    {suggestedPct > 0 && <circle cx="50" cy="50" r={40} fill="transparent" stroke="#248d78" strokeWidth="15"
+                      className="donut-segment"
+                      style={{ strokeDasharray: `${(suggestedPct / 100) * 251.2} 251.2`, strokeDashoffset: 0 } as any}
+                    />}
+                    {typedPct > 0 && <circle cx="50" cy="50" r={40} fill="transparent" stroke="#7b8b99" strokeWidth="15" 
+                      className="donut-segment"
+                      style={{ strokeDasharray: `${(typedPct / 100) * 251.2} 251.2`, strokeDashoffset: -((suggestedPct / 100) * 251.2) } as any}
+                    />}
+                  </svg>
+                  <div className="donut-center">
+                    <strong>{formatNumber(totalQueries)}</strong>
+                    <span>Queries</span>
+                  </div>
+                </div>
+                <div className="query-metrics-table">
+                  <table>
+                    <thead><tr><th>Source</th><th>Count</th><th>%</th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td><span className="legend-dot" style={{background: '#248d78'}}></span> AI Suggested</td>
+                        <td>{formatNumber(suggested)}</td>
+                        <td>{suggestedPct}%</td>
+                      </tr>
+                      <tr>
+                        <td><span className="legend-dot" style={{background: '#7b8b99'}}></span> Typed Manually</td>
+                        <td>{formatNumber(typed)}</td>
+                        <td>{typedPct}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })() : <div className="analytics-empty-chart">{loading ? "Loading query data…" : "No query metrics available."}</div>}
+        </div>
+      </section>
+
       <DemographicsPanel />
 
       <section className="analytics-respondent-panel" aria-labelledby="analytics-respondent-heading">

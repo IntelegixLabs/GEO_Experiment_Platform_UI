@@ -49,9 +49,10 @@ function FormattedMessage({ text }: { text: string }) {
 }
 
 const promptExamples = [
-  "Recommend wireless earbuds under ₹5000",
-  "Compare smart TVs for my living room",
-  "Good non-slip yoga mat?"
+  "Suggest me a good air conditioner for summer under ₹60,000.",
+  "What's the best camera for starting a podcast?",
+  "Recommend the best sunscreen for UV protection.",
+  "Find me the best toys for my baby boy's birthday."
 ];
 
 interface ParticipantExperienceProps {
@@ -306,6 +307,12 @@ export function ParticipantExperience({
       return;
     }
     if (!text || isQuerying) return;
+    
+    // Determine if the query was typed or clicked from suggestions
+    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+    const currentSuggestions = (lastMsg?.suggestions && lastMsg.suggestions.length > 0) ? lastMsg.suggestions : promptExamples;
+    const isSuggested = currentSuggestions.includes(text);
+
     setCatalogSelectedProduct(null);
     addMessage({ author: "participant", text });
     setQuery("");
@@ -317,6 +324,9 @@ export function ParticipantExperience({
         category_filter: catalogCategory || undefined,
       });
       setLastQueryId(result.query_id);
+      
+      record("query_submit", undefined, { is_suggested: isSuggested, query_text: text }, result.query_id);
+      
       addMessage({ 
         author: "assistant", 
         text: result.answer, 
@@ -361,17 +371,6 @@ export function ParticipantExperience({
         </button>
         <div className="storefront-header-actions">
           <button className="storefront-link" type="button" onClick={() => chooseCategory("")}>Browse catalog</button>
-          <button className="storefront-session-action" type="button" onClick={() => {
-            if (!session) {
-              setConsentOpen(true);
-            } else {
-              setIsChatOpen(true);
-              setTimeout(focusSearch, 100);
-            }
-          }}>
-            <span className={`status-dot ${session ? "active" : ""}`} aria-hidden="true" />
-            {session ? "Session ready" : "Start study"}
-          </button>
         </div>
       </header>
 
@@ -389,23 +388,7 @@ export function ParticipantExperience({
                 </button>
               )}
             </div>
-            <aside className="storefront-hero-panel premium-hero-panel" aria-label="Study session status" aria-live="polite">
-              <div className="hero-panel-orbit" aria-hidden="true">
-                <span className="orbit-circle-1" />
-                <span className="orbit-circle-2" />
-                <span className="orbit-circle-3" />
-              </div>
-              <p className="eyebrow panel-eyebrow">Your study session</p>
-              <h2>{session ? "Ready when you are" : "One short step first"}</h2>
-              <p>
-                {session
-                  ? `Session ${session.participant_code} is active. Your searches and product interactions are recorded.`
-                  : "Read the consent information before using the assistant."}
-              </p>
-              <button className="hero-panel-action" type="button" onClick={focusSearch}>
-                {session ? "Ask a product question" : "Start study"}
-              </button>
-            </aside>
+
           </section>
 
           <div className="study-notice storefront-study-notice">
