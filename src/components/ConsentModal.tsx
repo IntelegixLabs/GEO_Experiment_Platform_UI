@@ -217,7 +217,7 @@ export function ConsentModal({ open, studyName, isStarting, onClose, onStart }: 
   const [participantCode, setParticipantCode] = useState("");
   const [email, setEmail] = useState("");
   const [age, setAge] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState("India");
   const [aiFamiliarity, setAiFamiliarity] = useState("");
   const [consented, setConsented] = useState(false);
   const [error, setError] = useState("");
@@ -249,16 +249,34 @@ export function ConsentModal({ open, studyName, isStarting, onClose, onStart }: 
   }
 
   return (
-    <Modal open={open} onClose={onClose} titleId="consent-title">
-      <button className="close-button" type="button" onClick={onClose} aria-label="Close consent information">×</button>
-      <p className="eyebrow">Before you begin</p>
-      <h2 id="consent-title">Study consent</h2>
-      <p>
-        You are invited to take part in <em>{studyName}</em>. You may stop at any time. This research interface records
-        your participant name, email, age, location, search wording, product references, interactions, and questionnaire responses.
-      </p>
-      <p className="notice-copy">Do not enter payment, address, health, or other sensitive personal information.</p>
-      <form onSubmit={submit} className="form-stack">
+    <Modal open={open} onClose={onClose} titleId="consent-title" preventClose className="consent-modal-wide">
+      <div className="consent-layout">
+        <div className="consent-video-side">
+          <p className="eyebrow">Before you begin</p>
+          <h2 id="consent-title">Study consent</h2>
+          
+          <div className="consent-video-container">
+            <iframe 
+              width="100%" 
+              height="280" 
+              src="https://www.youtube.com/embed/buV_BlGZH6Q" 
+              title="Study Instructions" 
+              frameBorder="0" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowFullScreen
+              style={{ borderRadius: "8px", marginBottom: "1rem" }}
+            ></iframe>
+          </div>
+
+          <p style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "#49637d" }}>
+            You are invited to take part in <em>{studyName}</em>. You may stop at any time. This research interface records
+            your participant name, email, age, location, search wording, product references, interactions, and questionnaire responses.
+          </p>
+          <p className="notice-copy" style={{ fontSize: "0.8rem", marginTop: "0.75rem" }}>Do not enter payment, address, health, or other sensitive personal information.</p>
+        </div>
+
+        <div className="consent-form-side">
+          <form onSubmit={submit} className="form-stack">
         <label>
           Participant Name
           <input
@@ -338,7 +356,9 @@ export function ConsentModal({ open, studyName, isStarting, onClose, onStart }: 
             {isStarting ? "Starting…" : "I consent and want to start"}
           </button>
         </div>
-      </form>
+          </form>
+        </div>
+      </div>
     </Modal>
   );
 }

@@ -93,6 +93,12 @@ export function ParticipantExperience({
   const [consentOpen, setConsentOpen] = useState(false);
   const [surveyOpen, setSurveyOpen] = useState(false);
 
+  useEffect(() => {
+    if (!session) {
+      setConsentOpen(true);
+    }
+  }, [session]);
+
   const [catalogSelectedProduct, setCatalogSelectedProduct] = useState<Product | null>(null);
   const [chatInlineProduct, setChatInlineProduct] = useState<{product: Product, messageId: string} | null>(null);
   const [comparisons, setComparisons] = useState<Product[]>([]);
@@ -382,11 +388,6 @@ export function ParticipantExperience({
               <p className="eyebrow">Research catalog</p>
               <h1 id="participant-heading">Find products for the way you live.</h1>
               <p>Browse product details and compare the options that fit your needs.</p>
-              {!session && (
-                <button className="secondary-button storefront-consent-button" type="button" onClick={() => setConsentOpen(true)}>
-                  Read consent to begin
-                </button>
-              )}
             </div>
 
           </section>
@@ -913,7 +914,7 @@ export function ParticipantExperience({
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
-          {session ? "Chat" : "Start Study to Chat"}
+          {session ? "AI Chat" : "AI Chat"}
         </button>
       )}
     </section>
