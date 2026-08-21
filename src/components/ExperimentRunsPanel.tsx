@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api/client";
 import { Product } from "../types";
+import { formatPrice } from "../utils/formatters";
 
 const extractRating = (ratingStr: any) => {
   if (!ratingStr || ratingStr === 'Not supplied' || ratingStr.includes('No rating')) return null;
@@ -442,7 +443,7 @@ export function ExperimentRunsPanel() {
                                   {p.title}
                                 </div>
                                 <div style={{ fontSize: "0.75rem", color: "#5e757a" }}>
-                                  ID: {p.id} · Category: {p.category} · Price: ${p.price || 0}
+                                  ID: {p.id} · Category: {p.category} · Price: {formatPrice(p)}
                                 </div>
                               </div>
                             </div>
