@@ -126,6 +126,20 @@ export function RespondentActivityPanel() {
     }
   }
 
+  async function handleDeleteRespondent(sessionId: string, name: string) {
+    if (!window.confirm(`Are you sure you want to permanently delete respondent ${name} and all their logged queries, interactions, and survey responses? This cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      await api.deleteRespondent(sessionId);
+      // Reload current page
+      loadRespondents(page, pageSize, searchQuery, cohortFilter);
+    } catch (err: any) {
+      alert(err?.message || "Failed to delete respondent.");
+    }
+  }
+
   function formatTimestamp(iso?: string) {
     if (!iso) return "—";
     try {
@@ -490,22 +504,42 @@ export function RespondentActivityPanel() {
                     </td>
 
                     <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                      <button
-                        onClick={() => openActivityModal(resp.session_id)}
-                        style={{
-                          background: "#126166",
-                          color: "#ffffff",
-                          border: "none",
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          fontWeight: 600,
-                          fontSize: "0.8rem",
-                          cursor: "pointer",
-                          transition: "background 0.15s",
-                        }}
-                      >
-                        View Activity
-                      </button>
+                      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => handleDeleteRespondent(resp.session_id, resp.participant_code || resp.session_id)}
+                          style={{
+                            background: "transparent",
+                            color: "#ef4444",
+                            border: "1px solid #ef4444",
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            fontSize: "0.8rem",
+                            cursor: "pointer",
+                            transition: "background 0.15s",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => openActivityModal(resp.session_id)}
+                          style={{
+                            background: "#126166",
+                            color: "#ffffff",
+                            border: "none",
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            fontSize: "0.8rem",
+                            cursor: "pointer",
+                            transition: "background 0.15s",
+                          }}
+                        >
+                          View Activity
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
