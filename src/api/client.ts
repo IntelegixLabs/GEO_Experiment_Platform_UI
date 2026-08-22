@@ -201,5 +201,7 @@ export const api = {
   },
   getRespondentActivity: (sessionId: string) =>
     request<any>(`/admin/respondents/${encodeURIComponent(sessionId)}/activity`),
+  deleteRespondent: (sessionId: string) =>
+    request<any>(`/admin/respondents/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
   exportUrl: (dataset: string) => `${baseUrl}/export/${encodeURIComponent(dataset)}`,
 };
