@@ -12,6 +12,17 @@ server {
     gzip_proxied expired no-cache no-store private auth;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
 
+    # Dynamic API proxy to backend from GCP Secrets / runtime env (VITE_API_PROXY_TARGET)
+    location /api/ {
+        proxy_pass ${VITE_API_PROXY_TARGET}/api/;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Single Page Application routing (fall back to index.html for React Router / client routes)
     location / {
         try_files $uri $uri/ /index.html;
