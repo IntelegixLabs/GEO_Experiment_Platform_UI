@@ -43,9 +43,10 @@ export default function App() {
       ]);
       if (requestId !== catalogRequestId.current) return;
       setConfig(nextConfig);
-      setProducts(catalog.products);
-      setCatalogTotal(catalog.total);
-      setCatalogNextOffset(catalog.offset + catalog.products.length);
+      const fetchedProducts = catalog?.products || [];
+      setProducts(fetchedProducts);
+      setCatalogTotal(catalog?.total || fetchedProducts.length);
+      setCatalogNextOffset((catalog?.offset || 0) + fetchedProducts.length);
     } catch (reason) {
       if (requestId !== catalogRequestId.current) return;
       setLoadError(reason instanceof Error ? reason.message : "The study catalog could not be loaded.");
@@ -70,12 +71,14 @@ export default function App() {
       });
       if (requestId !== catalogRequestId.current) return;
 
+      const newProducts = catalog?.products || [];
       setProducts((current) => {
-        const currentIds = new Set(current.map((product) => product.id));
-        return [...current, ...catalog.products.filter((product) => !currentIds.has(product.id))];
+        const safeCurrent = current || [];
+        const currentIds = new Set(safeCurrent.map((product) => product.id));
+        return [...safeCurrent, ...newProducts.filter((product) => !currentIds.has(product.id))];
       });
-      setCatalogTotal(catalog.total);
-      setCatalogNextOffset(catalog.offset + catalog.products.length);
+      setCatalogTotal(catalog?.total || 0);
+      setCatalogNextOffset((catalog?.offset || 0) + newProducts.length);
     } catch (reason) {
       if (requestId !== catalogRequestId.current) return;
       setLoadError(reason instanceof Error ? reason.message : "More catalog products could not be loaded.");

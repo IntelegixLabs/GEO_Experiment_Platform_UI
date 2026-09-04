@@ -15,6 +15,7 @@ server {
     # Single Page Application routing (fall back to index.html for React Router / client routes)
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
     # Cache static assets

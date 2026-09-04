@@ -33,7 +33,7 @@ export function DemographicsPanel() {
   }, []);
 
   // Compute the scale for bubble sizes based on data counts
-  const maxCount = useMemo(() => Math.max(1, ...data.map((d) => d.count)), [data]);
+  const maxCount = useMemo(() => Math.max(1, ...(data || []).map((d) => d.count)), [data]);
   const sizeScale = scaleLinear().domain([1, maxCount]).range([4, 24]);
 
   return (

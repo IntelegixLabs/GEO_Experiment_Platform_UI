@@ -127,7 +127,7 @@ export function ParticipantExperience({
 
   const categories = useMemo(() => Array.from(new Set([
     ...(config?.categories || []),
-    ...products.map((product) => product.category),
+    ...(products || []).map((product) => product.category),
   ].filter(Boolean))), [config, products]);
 
   // Reset to page 1 when category changes
@@ -139,7 +139,7 @@ export function ParticipantExperience({
 
   const totalPages = Math.max(1, Math.ceil(catalogTotal / PRODUCTS_PER_PAGE));
   const pageStartIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
-  const visibleProducts = products;
+  const visibleProducts = products || [];
 
   function goToPage(page: number) {
     const clamped = Math.max(1, Math.min(page, totalPages));

@@ -53,6 +53,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError("The study server is unavailable. Please check that the API is running.");
   }
 
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(`Expected JSON response but received "${contentType || "empty"}". Check your API endpoint URL and backend status.`, response.status);
+  }
+
   const payload = (await response.json().catch(() => ({}))) as { error?: string; detail?: string } & T;
   if (!response.ok) {
     throw new ApiError(payload.error || payload.detail || "The study server could not complete that request.", response.status);
